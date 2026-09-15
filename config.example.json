@@ -96,5 +96,13 @@
     "run_as": "postgres",
     "dsn": "",
     "_note": "run_as — системный пользователь, от которого запускается psql (обычная для Debian проверка по владельцу процесса; работает, когда панель запущена от root). dsn — строка подключения, если нужен другой способ; пароль берётся из ~/.pgpass и в панели не хранится. | run_as is the system user psql runs as (peer authentication, works when the dashboard runs as root). dsn is a connection string for other setups; the password comes from ~/.pgpass and is never stored here."
+  },
+  "redact": {
+    "_note": "Demo mode for screenshots: replaces values in API answers only. Collected data is untouched.",
+    "enabled": false,
+    "replace": {
+      "example.com": "site-a.example",
+      "203.0.113.10": "1.1.1.1"
+    }
   }
 }

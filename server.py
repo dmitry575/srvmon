@@ -38,6 +38,48 @@ def _now():
     return int(time.time())
 
 
+def redaction(cfg):
+    """Pairs for the demo mode, longest original first.
+
+    Replacing a shorter string first would eat the longer one: with both
+    "example.com" and "www.example.com" in the rules, the short one would
+    match inside the long one and leave a mangled tail.
+    """
+    conf = cfg.get("redact") or {}
+    if not conf.get("enabled"):
+        return []
+    # Substitution happens over the serialised answer, so a purely numeric rule
+    # would also rewrite unrelated numbers — sizes, percentages, timestamps.
+    # Such rules are ignored; mask names and addresses instead.
+    pairs = [(str(k), str(v)) for k, v in (conf.get("replace") or {}).items()
+             if k and not str(k).isdigit()]
+    # A replacement that equals some other original would be turned back by
+    # unredact_text and break the page's own links. Such a pair is dropped.
+    originals = {k for k, _ in pairs}
+    pairs = [(k, v) for k, v in pairs if v not in originals or v == k]
+    pairs.sort(key=lambda p: -len(p[0]))
+    return pairs
+
+
+def redact_text(text, pairs):
+    for original, replacement in pairs:
+        text = text.replace(original, replacement)
+    return text
+
+
+def unredact_text(text, pairs):
+    """Turn a masked identifier from the URL back into the real one.
+
+    While the demo mode is on, the page builds its links out of masked values,
+    so a request comes back as /domains/site-a. Without this the page would
+    answer 404 to its own link.
+    """
+    for original, replacement in pairs:
+        if replacement:
+            text = text.replace(replacement, original)
+    return text
+
+
 def series(sql, params, fields):
     rows = store.rows(sql, params)
     return [{f: r.get(f) for f in fields} for r in rows]
@@ -375,7 +417,8 @@ def api_processes(q, cfg):
         names = sysinfo.user_names()
         for p in procs:
             p["user"] = names.get(p["uid"], str(p["uid"]))
-    return {"processes": procs, "ts": _now(), "cores": os.cpu_count()}
+    return {"processes": procs, "ts": _now(), "cores": os.cpu_count(),
+            "memory_total": sysinfo.meminfo().get("total")}
 
 
 def api_network(q, cfg):
@@ -586,8 +629,14 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def _json(self, data, code=200, extra=None):
-        self._send(code, json.dumps(data, ensure_ascii=False, default=str).encode("utf-8"),
-                   extra=extra)
+        body = json.dumps(data, ensure_ascii=False, default=str)
+        # Demo mode masks values in the answer itself, so nothing has to be
+        # remembered at every call site — and nothing leaks through a field
+        # somebody forgot about.
+        pairs = getattr(self, "_redact_pairs", None)
+        if pairs:
+            body = redact_text(body, pairs)
+        self._send(code, body.encode("utf-8"), extra=extra)
 
     def _cookie_token(self):
         raw = self.headers.get("Cookie")
@@ -668,6 +717,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _api(self, name, q):
         cfg = store.load_config()
+        pairs = redaction(cfg)
+        self._redact_pairs = pairs
+        if pairs:
+            name = unredact_text(name, pairs)
         parts = name.split("/")
         head = parts[0]
         try:

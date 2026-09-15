@@ -61,6 +61,7 @@ async function api(path, opts) {
   if (r.status === 401) { renderLogin(); throw new Error('unauth'); }
   const ct = r.headers.get('content-type') || '';
   if (!ct.includes('json')) throw new Error('HTTP ' + r.status);
+  state.lastUpdate = Date.now();
   return r.json();
 }
 
@@ -889,7 +890,12 @@ async function pageProcesses() {
       { title: t('Пользователь'), val: r => r.user },
       { title: t('ЦП'), num: true, val: r => r.cpu, render: r => r.cpu === null ? '—' : h('span', { style: r.cpu > 50 ? 'color:var(--warn)' : '' }, r.cpu + '%') },
       { title: t('Память'), num: true, val: r => r.rss, render: r => bytes(r.rss) },
-      { title: t('Доля ОЗУ'), num: true, val: r => r.rss, render: r => pct(100 * (r.rss || 0) / ((state.data.overview?.system?.memory?.total) || 1)) },
+      {
+        title: t('Доля ОЗУ'), num: true, val: r => r.rss, render: r => {
+          const total = d.memory_total || state.data.overview?.system?.memory?.total;
+          return total ? pct(100 * (r.rss || 0) / total) : '—';
+        }
+      },
       { title: t('Аптайм'), num: true, val: r => r.started, sortVal: r => -r.started, render: r => dur(Math.floor(Date.now() / 1000) - r.started) },
       { title: t('Команда'), val: r => r.cmd, render: r => h('span', { class: 'trunc mono', title: r.cmd }, r.cmd) },
     ], procs, 'procs')),

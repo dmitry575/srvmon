@@ -9,6 +9,12 @@ service die.
 
 **[Русская версия документации →](README.ru.md)**
 
+![Overview](docs/screenshots/overview.png)
+
+<sub>Screenshots are taken from a live install with demo mode on: real numbers
+and real charts, with hostnames, addresses and paths substituted. See
+[Demo mode](#demo-mode).</sub>
+
 ---
 
 ## Why another dashboard
@@ -47,6 +53,21 @@ srvmon takes the opposite position:
 | **Settings** | Thresholds, collection intervals, and the domain list — editable from the UI |
 
 Interface language: **English and Russian**, switchable in the sidebar.
+
+
+## Screenshots
+
+| | |
+|---|---|
+| [![Domains](docs/screenshots/domains.png)](docs/screenshots/domains.png)<br>**Domains** — status, response time, requests, errors, certificate and registration expiry | [![Domain](docs/screenshots/domain.png)](docs/screenshots/domain.png)<br>**One domain** — availability, traffic, charts, backend, certificate, registration |
+| [![Databases](docs/screenshots/databases.png)](docs/screenshots/databases.png)<br>**Databases** — MySQL, PostgreSQL and SQLite side by side | [![PostgreSQL](docs/screenshots/database-postgres.png)](docs/screenshots/database-postgres.png)<br>**A PostgreSQL database** — data, indexes and TOAST, dead rows, vacuum, largest indexes |
+| [![Storage](docs/screenshots/storage.png)](docs/screenshots/storage.png)<br>**Storage** — filesystems, largest directories, read-only browser | [![Services](docs/screenshots/services.png)](docs/screenshots/services.png)<br>**Services** — state, memory, ports, uptime, restart count |
+| [![Certificates](docs/screenshots/certificates.png)](docs/screenshots/certificates.png)<br>**Certificates** — expiry of TLS certificates and of the domains themselves | [![Events](docs/screenshots/events.png)](docs/screenshots/events.png)<br>**Events** — what is wrong now and a timeline of what broke and recovered |
+| [![Settings](docs/screenshots/settings.png)](docs/screenshots/settings.png)<br>**Settings** — thresholds, intervals, and the domain list | [![Mobile](docs/screenshots/mobile.png)](docs/screenshots/mobile.png)<br>**On a phone** — the same data, one column |
+
+The Processes and Ports pages are intentionally not shown: even with demo mode
+on they display real command lines and port numbers of everything else running
+on the machine.
 
 ## Requirements
 
@@ -169,6 +190,40 @@ in `idle in transaction`, with thresholds in Settings.
 High-resolution history is kept for 7 days, hourly aggregates for 180 days,
 and old rows are pruned automatically. All intervals and thresholds are
 editable in Settings.
+
+
+## Demo mode
+
+Publishing a screenshot of your own dashboard means publishing your hostnames,
+addresses and paths. Demo mode substitutes them in the API answers, so the
+picture stays truthful in every number while giving nothing away:
+
+```json
+"redact": {
+  "enabled": true,
+  "replace": {
+    "203.0.113.10": "1.1.1.1",
+    "my-real-site.com": "example.com",
+    "/srv/my-project": "/srv/example"
+  }
+}
+```
+
+Collected data is untouched — only what leaves through the API is rewritten,
+and links keep working because identifiers are translated back on the way in.
+Two notes from building it: a purely numeric rule is ignored, because replacing
+digits in a serialised answer also rewrites sizes and timestamps; and a
+replacement equal to some other original is dropped, because it would be
+translated back and break the page's own links.
+
+The screenshots in this README were produced with:
+
+```bash
+SRVMON_PASSWORD='...' node tools/screenshots.js --out docs/screenshots
+```
+
+It drives a headless Chromium over the DevTools protocol — no puppeteer, no
+node_modules.
 
 ## Security
 
