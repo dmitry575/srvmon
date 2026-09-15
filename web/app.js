@@ -1,8 +1,8 @@
-/* Панель мониторинга. Ванильный JS без сборки и без внешних библиотек:
-   сервер отдаёт три файла, страница живёт на одном запросе к API за отрисовку. */
+/* The dashboard. Vanilla JS, no build step and no external libraries: the
+   server hands out three files, and a page costs one API request to render. */
 'use strict';
 
-// ---------- утилиты ----------
+// ---------- helpers ----------
 const $ = (sel, ctx) => (ctx || document).querySelector(sel);
 const state = { page: null, timer: null, data: {}, range: '24h', sort: {}, sidebar: false };
 
@@ -64,7 +64,7 @@ async function api(path, opts) {
   return r.json();
 }
 
-// ---------- графики ----------
+// ---------- charts ----------
 const PALETTE = ['#5ccfe6', '#a371f7', '#3fb950', '#d9a227', '#f2555a', '#4d9fff'];
 
 function chart(sets, opts) {
@@ -145,7 +145,7 @@ function rangeSwitch(onChange) {
   return box;
 }
 
-// ---------- вспомогательные элементы ----------
+// ---------- small building blocks ----------
 function metric(label, value, opts) {
   opts = opts || {};
   const cls = 'card metric' + (opts.level ? ' ' + opts.level : '');
@@ -209,7 +209,7 @@ document.addEventListener('click', e => {
 });
 window.addEventListener('popstate', () => render());
 
-// ---------- каркас страницы ----------
+// ---------- page frame ----------
 const NAV = [
   ['/', t('Обзор'), '▣'], ['/domains', t('Домены'), '◉'], ['/databases', t('Базы данных'), '▤'],
   ['/storage', t('Диск'), '▥'], ['/services', t('Службы'), '⚙'], ['/processes', t('Процессы'), '≡'],
@@ -268,7 +268,7 @@ function head(title, sub, right) {
     right ? h('span', { class: 'spacer' }, right) : null);
 }
 
-// ---------- страница: обзор ----------
+// ---------- page: overview ----------
 async function pageOverview() {
   const d = await api('overview');
   state.data.overview = d;
@@ -312,7 +312,7 @@ async function pageOverview() {
     })
   );
 
-  // сводки
+  // summaries
   const sd = d.summary_domains, sdb = d.summary_db;
   const sums = h('div', { class: 'grid g-3', style: 'margin-top:12px' },
     h('div', { class: 'card' }, h('h2', {}, t('Сайты'), h('span', { class: 'r' },
@@ -348,7 +348,7 @@ async function pageOverview() {
         h('dt', {}, t('Свободно')), h('dd', { style: 'color:var(--ok)' }, bytes(disk.free))))
   );
 
-  // предупреждения
+  // alerts
   const alertsCard = h('div', { class: 'card pad0', style: 'margin-top:12px' },
     h('h2', { style: 'padding:14px 15px 10px;margin:0' }, t('Предупреждения'),
       h('span', { class: 'r' }, h('a', { href: '/alerts', 'data-nav': '1' }, t('история →')))),
@@ -359,7 +359,7 @@ async function pageOverview() {
         h('span', { class: 't' }, ago(a.ts)))))
       : h('div', { class: 'empty' }, t('✓ Проблем не обнаружено')));
 
-  // таблица сайтов
+  // site table
   const domCard = h('div', { class: 'card pad0', style: 'margin-top:12px' },
     h('h2', { style: 'padding:14px 15px 10px;margin:0' }, t('Сайты')),
     sortableTable([
@@ -394,7 +394,7 @@ async function pageOverview() {
     cards, alertsCard, sums, domCard, charts), { title: t('Обзор') });
 }
 
-// ---------- страница: домены ----------
+// ---------- page: domains ----------
 async function pageDomains() {
   const d = await api('domains');
   shell(h('div', {},
@@ -426,7 +426,7 @@ async function pageDomains() {
     ], d.domains, 'domains'))), { title: t('Домены') });
 }
 
-// ---------- страница: карточка домена ----------
+// ---------- page: a single domain ----------
 async function pageDomain(id) {
   const d = await api('domains/' + encodeURIComponent(id) + '?range=' + state.range);
   if (d.error) { shell(h('div', {}, head(t('Домен не найден')), h('div', { class: 'empty' }, d.error))); return; }
@@ -585,7 +585,7 @@ async function pageDomain(id) {
   ), { title: d.domain });
 }
 
-// ---------- страница: базы данных ----------
+// ---------- page: databases ----------
 async function pageDatabases() {
   const d = await api('databases');
   const list = d.databases || [];
@@ -739,7 +739,7 @@ async function pageDatabase(id) {
     cards, charts, tables, idxCard, pl), { title: d.name });
 }
 
-// ---------- страница: диск ----------
+// ---------- page: storage ----------
 async function pageStorage() {
   const d = await api('storage');
   const root = d.filesystems.find(f => f.mount === '/') || d.filesystems[0] || {};
@@ -785,7 +785,7 @@ async function pageStorage() {
     name: t('занято'), points: (d.history || []).map(r => [r.ts, r.used])
   }], { fmt: v => bytes(v, 0) });
 
-  // просмотр дерева
+  // directory browser
   const treeBox = h('div', { class: 'card pad0', style: 'margin-top:12px' },
     h('h2', { style: 'padding:14px 15px 10px;margin:0' }, t('Просмотр каталогов'),
       h('span', { class: 'r' }, t('только чтение'))));
@@ -819,7 +819,7 @@ async function pageStorage() {
     treeBox), { title: t('Диск') });
 }
 
-// ---------- страница: службы ----------
+// ---------- page: services ----------
 async function pageServices() {
   const d = await api('services');
   const svcs = d.services || [];
@@ -858,7 +858,7 @@ async function pageServices() {
   ), { title: t('Службы') });
 }
 
-// ---------- страница: процессы ----------
+// ---------- page: processes ----------
 async function pageProcesses() {
   const d = await api('processes');
   const procs = d.processes || [];
@@ -898,12 +898,12 @@ async function pageProcesses() {
   ), { title: t('Процессы') });
 }
 
-// ---------- страница: порты ----------
+// ---------- page: ports ----------
 async function pageNetwork() {
   const d = await api('network');
   const all = d.ports || [];
-  // Временные исходящие UDP-сокеты прокси в таблицу не попадают: их бывают
-  // десятки, и службами они не являются. Их число показано отдельной строкой.
+  // Transient outbound UDP sockets of a proxy stay out of the table: there
+  // can be dozens and they are not services. Their count gets its own tile.
   const ports = all.filter(p => !p.ephemeral);
   const ephem = all.length - ports.length;
   const pub = ports.filter(p => p.scope === 'public');
@@ -947,7 +947,7 @@ async function pageNetwork() {
   ), { title: t('Порты') });
 }
 
-// ---------- страница: сертификаты ----------
+// ---------- page: certificates ----------
 async function pageSSL() {
   const d = await api('ssl');
   state.data.domainList = (await api('domains')).domains || [];
@@ -996,7 +996,7 @@ async function pageSSL() {
   ), { title: t('Сертификаты') });
 }
 
-// ---------- страница: события ----------
+// ---------- page: events ----------
 async function pageAlerts() {
   const d = await api('alerts');
   const active = d.active || [], events = d.events || [];
@@ -1032,7 +1032,7 @@ async function pageAlerts() {
   ), { title: t('События') });
 }
 
-// ---------- страница: настройки ----------
+// ---------- page: settings ----------
 async function pageSettings() {
   const d = await api('settings');
   state.thresholds = d.thresholds;
@@ -1080,11 +1080,11 @@ async function pageSettings() {
     });
     msg.textContent = r.error
       ? '⚠ ' + (SETTINGS_ERRORS[I18N.lang][r.code] || r.error)
-      : t('✓ сохранено: ') + (r.changed || []).join(', ');
+      : t('✓ сохранено: ') + (r.changed || []).map(changedLabel).join(', ');
     if (!r.error) setTimeout(render, 900);
   }
 
-  // форма домена
+  // domain form
   const f = {};
   const field = (key, label, ph, type) => {
     f[key] = h('input', { class: 'f', type: type || 'text', placeholder: ph || '' });
@@ -1193,7 +1193,7 @@ async function pageSettings() {
   ), { title: t('Настройки') });
 }
 
-// ---------- вход ----------
+// ---------- sign-in ----------
 function renderLogin(err) {
   clearInterval(state.timer);
   state.timer = null;
@@ -1210,7 +1210,8 @@ function renderLogin(err) {
     });
     const j = await r.json();
     if (j.ok) { state.booted = false; render(); }
-    else errBox.textContent = j.error || t('Не удалось войти');
+    else errBox.textContent = (SETTINGS_ERRORS[I18N.lang] || {})[j.code]
+      || j.error || t('Не удалось войти');
   }
   const form = h('form', { class: 'login', onsubmit: submit },
     h('h1', {}, t('Мониторинг сервера')),
@@ -1235,7 +1236,7 @@ async function logout() {
   renderLogin();
 }
 
-// ---------- роутер ----------
+// ---------- router ----------
 async function render() {
   const path = location.pathname;
   try {
@@ -1269,8 +1270,8 @@ async function boot() {
   const s = await fetch('/api/session', { credentials: 'same-origin' }).then(r => r.json());
   if (!s.authenticated) { renderLogin(); return; }
   await render();
-  // текущие значения обновляем раз в 20 секунд: чаще незачем,
-  // коллектор всё равно пишет реже
+  // Current values refresh every 20 seconds: more often makes no sense,
+  // the collector writes less frequently anyway
   clearInterval(state.timer);
   state.timer = setInterval(() => {
     if (!document.hidden) render();

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Проверка полноты словаря без запуска панели.
+"""Dictionary completeness check that needs no running dashboard.
 
-Ищет в app.js все обращения t('…') и сверяет их со словарём в i18n.js.
-Нужна для проверки в CI: там нет ни сервера, ни браузера, а забытый перевод
-поймать хочется до слияния.
+Collects every t('…') call in app.js and matches it against the dictionary in
+i18n.js. Written for CI, where there is neither a server nor a browser, but a
+forgotten translation should still be caught before a merge.
 """
 import os
 import re
@@ -13,7 +13,7 @@ BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def literals(text):
-    """Строки внутри t(...) — с учётом экранирования и обеих кавычек."""
+    """Strings inside t(...), honouring escapes and both quote styles."""
     out = []
     for m in re.finditer(r"""\bt\(\s*(['"])((?:\\.|(?!\1).)*)\1\s*\)""", text):
         raw = m.group(2)
@@ -22,7 +22,7 @@ def literals(text):
 
 
 def dict_keys(text):
-    """Ключи словаря DICT: от объявления до закрывающей скобки."""
+    """Keys of the DICT object: from its declaration to the closing brace."""
     start = text.find("const DICT = {")
     if start < 0:
         return set()
@@ -42,18 +42,18 @@ def main():
     missing = sorted({s for s in used if s not in known})
     unused = sorted(known - set(used))
 
-    print("строк в интерфейсе: %d, в словаре: %d" % (len(set(used)), len(known)))
+    print("interface strings: %d, dictionary entries: %d" % (len(set(used)), len(known)))
     if missing:
-        print("\nбез перевода (%d):" % len(missing))
+        print("\nmissing translations (%d):" % len(missing))
         for s in missing:
             print("   %r" % s)
     if unused:
-        print("\nв словаре, но больше не используются (%d):" % len(unused))
+        print("\nin the dictionary but no longer used (%d):" % len(unused))
         for s in unused[:20]:
             print("   %r" % s)
     if missing:
         return 1
-    print("все строки переведены")
+    print("every string is translated")
     return 0
 
 

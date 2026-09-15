@@ -1,4 +1,3 @@
-# Личные данные и состояние — в репозиторий не попадают.
 # Local data and state — never committed.
 config.json
 var/

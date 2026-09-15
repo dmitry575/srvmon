@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Задать логин и пароль для входа в панель:
-    python3 tools/passwd.py <логин> [пароль]
-Без пароля в аргументах он запрашивается скрытым вводом — так он не попадёт
-ни в историю команд, ни в список процессов."""
+"""Set the login and password for the dashboard.
+
+    python3 tools/passwd.py <login> [password]
+
+With no password in the arguments it is asked for interactively, so it lands
+neither in the shell history nor in the process list.
+"""
 import getpass
 import os
 import sys
@@ -18,16 +21,16 @@ def main():
     if len(sys.argv) > 2:
         password = sys.argv[2]
     else:
-        password = getpass.getpass("Пароль для %s: " % login)
-        if password != getpass.getpass("Ещё раз: "):
-            print("Пароли не совпали")
+        password = getpass.getpass("Password for %s: " % login)
+        if password != getpass.getpass("Repeat: "):
+            print("Passwords do not match")
             return 1
     if len(password) < 8:
-        print("Слишком короткий пароль: нужно хотя бы 8 символов")
+        print("Password too short: at least 8 characters")
         return 1
     store.init()
     auth.set_user(login, password)
-    print("Пользователь %s сохранён в var/users.json (только хеш пароля)" % login)
+    print("User %s saved to var/users.json (password hash only)" % login)
     return 0
 
 if __name__ == "__main__":

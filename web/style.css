@@ -1,5 +1,5 @@
-/* Тёмная панель. Ни одной внешней зависимости: шрифты системные,
-   графики рисуются самим приложением в SVG. */
+/* Dark dashboard. No external dependencies at all: system fonts, and charts
+   drawn by the application itself as inline SVG. */
 :root {
   --bg: #0b0f14;
   --bg-panel: #121820;
@@ -32,7 +32,7 @@ a { color: var(--info); text-decoration: none; }
 a:hover { text-decoration: underline; }
 button, input, select { font: inherit; color: inherit; }
 
-/* ---------- каркас ---------- */
+/* ---------- layout ---------- */
 .layout { display: grid; grid-template-columns: 218px 1fr; min-height: 100vh; }
 .sidebar {
   background: var(--bg-panel);
@@ -78,7 +78,7 @@ main { padding: 18px 22px 42px; min-width: 0; }
 .page-head .sub { color: var(--text-faint); font-size: 12.5px; }
 .spacer { margin-left: auto; }
 
-/* ---------- карточки ---------- */
+/* ---------- cards ---------- */
 .grid { display: grid; gap: 12px; }
 .g-metrics { grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); }
 .g-2 { grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
@@ -110,7 +110,7 @@ main { padding: 18px 22px 42px; min-width: 0; }
 .bar i.ok { background: var(--ok); } .bar i.warn { background: var(--warn); }
 .bar i.bad { background: var(--bad); }
 
-/* ---------- статусы ---------- */
+/* ---------- statuses ---------- */
 .st { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
 .st::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .st.ok::before { background: var(--ok); }
@@ -126,7 +126,7 @@ main { padding: 18px 22px 42px; min-width: 0; }
 .pill.bad { color: var(--bad); border-color: rgba(242,85,90,.35); background: rgba(242,85,90,.08); }
 .pill.info { color: var(--info); border-color: rgba(77,159,255,.3); background: rgba(77,159,255,.08); }
 
-/* ---------- таблицы ---------- */
+/* ---------- tables ---------- */
 .tw { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th {
@@ -148,7 +148,7 @@ td.mono { font-family: var(--mono); font-size: 12px; }
 .nowrap { white-space: nowrap; }
 .trunc { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ---------- предупреждения ---------- */
+/* ---------- alerts ---------- */
 .alert-row {
   display: flex; gap: 11px; align-items: flex-start; padding: 10px 12px;
   border-bottom: 1px solid var(--line-soft);
@@ -163,7 +163,7 @@ td.mono { font-family: var(--mono); font-size: 12px; }
 .alert-row.info { border-left: 3px solid var(--info); }
 .empty { padding: 22px; text-align: center; color: var(--text-faint); font-size: 13px; }
 
-/* ---------- графики ---------- */
+/* ---------- charts ---------- */
 .chart { width: 100%; display: block; }
 .chart .grid-l { stroke: var(--line-soft); stroke-width: 1; }
 .chart .axis-t { fill: var(--text-faint); font-size: 10px; font-family: var(--mono); }
@@ -182,7 +182,7 @@ td.mono { font-family: var(--mono); font-size: 12px; }
 .range-sw button.on { background: var(--bg-hover); color: var(--text); }
 .range-sw button:hover { color: var(--text); }
 
-/* ---------- вход ---------- */
+/* ---------- sign-in ---------- */
 .login-wrap { display: grid; place-items: center; min-height: 100vh; padding: 20px; }
 .login {
   background: var(--bg-panel); border: 1px solid var(--line); border-radius: 14px;
@@ -203,7 +203,7 @@ td.mono { font-family: var(--mono); font-size: 12px; }
 .login button:hover { filter: brightness(1.08); }
 .login .err { color: var(--bad); font-size: 12.5px; margin-bottom: 12px; min-height: 16px; }
 
-/* ---------- прочее ---------- */
+/* ---------- misc ---------- */
 .kv { display: grid; grid-template-columns: minmax(120px, auto) 1fr; gap: 7px 16px; font-size: 13px; }
 .kv dt { color: var(--text-faint); }
 .kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; word-break: break-word; }

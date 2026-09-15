@@ -1,11 +1,12 @@
-"""Разбор access-логов nginx.
+"""Parsing nginx access logs.
 
-Логи ведутся в формате combined, времени ответа в них нет. Поэтому отсюда
-берутся только те величины, которые в логе действительно есть: число запросов,
-распределение статусов и отданные байты. Время ответа панель берёт из
-собственных замеров в health-проверках и нигде не смешивает одно с другим.
-Если формат лога когда-нибудь расширят полями $request_time/$upstream_response_time,
-парсер подхватит их автоматически — они ищутся в хвосте строки.
+Logs are usually written in the combined format, which carries no response
+time. Only what the log actually contains is taken from here: request count,
+status distribution and bytes sent. Response time comes from the dashboard's
+own health checks and the two are never mixed.
+
+If the log format is ever extended with $request_time / $upstream_response_time,
+the parser picks them up on its own — they are looked for at the end of the line.
 """
 import os
 import re
@@ -18,7 +19,7 @@ from . import store
 LINE_RE = re.compile(
     r'^(?P<ip>\S+) \S+ \S+ \[(?P<ts>[^\]]+)\] "(?P<req>[^"]*)" '
     r'(?P<status>\d{3}) (?P<bytes>\d+|-)(?P<tail>.*)$')
-# хвост расширенного формата: rt=0.123 urt=0.120 либо два последних числа
+# tail of an extended format: rt=0.123 urt=0.120
 TAIL_RT_RE = re.compile(r'\brt=(?P<rt>[\d.]+)')
 TAIL_URT_RE = re.compile(r'\burt=(?P<urt>[\d.]+)')
 
@@ -45,8 +46,9 @@ def parse_time(raw):
 
 
 class Tailer:
-    """Держит позицию в файле и отдаёт только дописанные строки.
-    Смена inode или усечение файла означают ротацию — читаем с начала."""
+    """Keeps a position in the file and returns only the appended lines.
+
+    A changed inode or a truncated file means rotation — start from the top."""
 
     def __init__(self, path):
         self.path = path
@@ -68,9 +70,9 @@ class Tailer:
         if inode == st.st_ino and offset is not None and offset <= st.st_size:
             start = offset
         elif inode == st.st_ino and offset is not None and offset > st.st_size:
-            start = 0  # файл усечён
+            start = 0  # file was truncated
         elif inode is None:
-            # первый запуск: не перемалываем гигабайты истории, берём только хвост
+            # First run: do not grind through gigabytes of history, take the tail
             start = max(0, st.st_size - 512 * 1024)
         if st.st_size - start > max_bytes:
             start = st.st_size - max_bytes
@@ -91,7 +93,7 @@ class Tailer:
 
 
 def aggregate(lines, since=None):
-    """Сводка по пачке строк. Отдаёт счётчики и список ошибок 5xx."""
+    """Summary over a batch of lines: counters and the list of 5xx errors."""
     agg = {"requests": 0, "c2xx": 0, "c3xx": 0, "c4xx": 0, "c5xx": 0,
            "bytes": 0, "bots": 0, "rt_sum": 0.0, "rt_n": 0,
            "first_ts": None, "last_ts": None}
@@ -133,8 +135,8 @@ def aggregate(lines, since=None):
 
 
 def scan_history(path, since_ts, max_bytes=40 * 1024 * 1024):
-    """Разовый проход по хвосту файла — нужен при старте, чтобы графики
-    за сутки не начинались с пустоты."""
+    """A one-off pass over the tail of the file, used at startup so that the
+    last day of charts does not begin as a blank."""
     if not os.path.exists(path):
         return []
     st = os.stat(path)
@@ -149,7 +151,7 @@ def scan_history(path, since_ts, max_bytes=40 * 1024 * 1024):
 
 
 def bucket_history(lines, bucket_sec=300, since=None):
-    """Раскладывает строки по интервалам — для восстановления графика из лога."""
+    """Bucket lines by time — used to rebuild a chart from the log."""
     out = {}
     for line in lines:
         m = LINE_RE.match(line)

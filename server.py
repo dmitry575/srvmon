@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Веб-часть панели: API и раздача статики.
+"""The web side: API and static files.
 
-Сервер только читает. В нём нет ни одного пути, который выполнял бы
-произвольную команду, произвольный SQL или менял файлы на диске; правится
-через API лишь собственный config.json панели.
+This server only reads. There is no route that runs an arbitrary command,
+executes arbitrary SQL or writes files on disk; the only thing the API can
+change is the dashboard's own config.json.
 
-Тяжёлую работу делает коллектор, поэтому запросы к API почти всегда
-обслуживаются из готовых снимков в SQLite и стоят единицы миллисекунд.
+The heavy lifting happens in the collector, so API requests are almost always
+served from ready snapshots in SQLite and cost single-digit milliseconds.
 """
 import json
 import os
@@ -32,7 +32,7 @@ CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset
                  ".woff2": "font/woff2"}
 
 
-# ---------- вспомогательное ----------
+# ---------- helpers ----------
 
 def _now():
     return int(time.time())
@@ -49,8 +49,8 @@ def range_seconds(name, default=86400):
 
 
 def bucket_for(span):
-    """Чем длиннее интервал, тем крупнее точка: график должен рисоваться
-    из сотен значений, а не из десятков тысяч."""
+    """The longer the range, the coarser the bucket: a chart should be drawn
+    from hundreds of points, not from tens of thousands."""
     if span <= 3600:
         return 60
     if span <= 6 * 3600:
@@ -87,7 +87,7 @@ def uptime_pct(domain, since):
     return round(100.0 * row["ok"] / row["n"], 2)
 
 
-# ---------- обработчики API ----------
+# ---------- API handlers ----------
 
 def api_overview(q, cfg):
     system, sys_ts = store.get_latest("system", {})
@@ -285,7 +285,7 @@ def api_databases(q, cfg):
             (d["engine"], key))
         d["last_snapshot"] = last["ts"] if last else None
     errors = latest.get("error") if latest else None
-    if isinstance(errors, str):        # прежний вид: только ошибка MySQL
+    if isinstance(errors, str):        # older shape: MySQL error only
         errors = {"mysql": errors}
     return {"databases": lst,
             "mysql_status": latest.get("mysql_status", {}) if latest else {},
@@ -462,9 +462,11 @@ def api_settings(q, cfg):
 
 
 def settings_save(body, cfg):
-    """Меняем только те разделы конфига, которые панель имеет право менять.
-    Пути к сертификатам, логам и командам не приходят из браузера как есть —
-    для домена принимается фиксированный набор полей."""
+    """Only the parts of the config the dashboard is allowed to change.
+
+    Paths to certificates, logs and units are not taken from the browser as-is:
+    a domain accepts a fixed set of fields, each validated separately.
+    """
     allowed_threshold = set(cfg.get("thresholds", {}).keys())
     changed = []
     if "thresholds" in body:
@@ -472,7 +474,7 @@ def settings_save(body, cfg):
             if k in allowed_threshold:
                 try:
                     cfg["thresholds"][k] = float(v) if "." in str(v) else int(v)
-                    changed.append("порог " + k)
+                    changed.append("threshold:" + k)
                 except (TypeError, ValueError):
                     continue
     if "intervals" in body:
@@ -480,18 +482,18 @@ def settings_save(body, cfg):
             if k in cfg.get("intervals", {}):
                 try:
                     cfg["intervals"][k] = max(10, int(v))
-                    changed.append("интервал " + k)
+                    changed.append("interval:" + k)
                 except (TypeError, ValueError):
                     continue
     if "domain" in body:
         d = body["domain"]
         ident = str(d.get("id", "")).strip()
         if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,40}", ident):
-            return {"error": "Идентификатор: латиница, цифры, дефис",
+            return {"error": "Identifier: latin letters, digits, hyphen",
                     "code": "bad_id"}, 400
         domain_name = str(d.get("domain", "")).strip().lower()
         if not re.fullmatch(r"[a-z0-9.-]{3,253}", domain_name):
-            return {"error": "Некорректное имя домена", "code": "bad_domain"}, 400
+            return {"error": "Invalid domain name", "code": "bad_domain"}, 400
         entry = domain_by_id(cfg, ident) or {}
         new = dict(entry)
         new.update({
@@ -518,11 +520,11 @@ def settings_save(body, cfg):
             new["databases"] = clean_dbs
         others = [x for x in cfg.get("domains", []) if x["id"] != ident]
         cfg["domains"] = others + [new]
-        changed.append("домен " + ident)
+        changed.append("domain:" + ident)
     if body.get("delete_domain"):
         ident = str(body["delete_domain"])
         cfg["domains"] = [x for x in cfg.get("domains", []) if x["id"] != ident]
-        changed.append("удалён домен " + ident)
+        changed.append("removed:" + ident)
     store.save_config(cfg)
     return {"ok": True, "changed": changed}, 200
 
@@ -565,9 +567,9 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):
-        pass  # свой лог не ведём: панель и так живёт под nginx
+        pass  # no log of our own: the dashboard already lives behind nginx
 
-    # ---- ответы ----
+    # ---- responses ----
     def _send(self, code, body=b"", ctype="application/json; charset=utf-8", extra=None):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
@@ -611,7 +613,7 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, UnicodeDecodeError):
             return {}
 
-    # ---- маршрутизация ----
+    # ---- routing ----
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
@@ -626,13 +628,13 @@ class Handler(BaseHTTPRequestHandler):
 
         if path.startswith("/api/"):
             if not self._user():
-                return self._json({"error": "требуется вход"}, 401)
+                return self._json({"error": "authentication required", "code": "auth_required"}, 401)
             return self._api(path[5:], q)
 
         return self._static(path)
 
     def do_HEAD(self):
-        # Отвечаем на HEAD так же, как на GET: тело обрезается в _send.
+        # HEAD is answered like GET: the body is dropped in _send.
         self.do_GET()
 
     def do_POST(self):
@@ -642,7 +644,7 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body()
             login = str(body.get("login", ""))[:64]
             password = str(body.get("password", ""))[:256]
-            time.sleep(0.25)  # притормаживаем перебор
+            time.sleep(0.25)  # slow down guessing
             if auth.authenticate(login, password):
                 token, ttl = auth.create_session(login)
                 cookie = ("%s=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=%d"
@@ -650,18 +652,18 @@ class Handler(BaseHTTPRequestHandler):
                 if self.headers.get("X-Forwarded-Proto") == "https":
                     cookie += "; Secure"
                 return self._json({"ok": True, "user": login}, extra={"Set-Cookie": cookie})
-            return self._json({"error": "Неверный логин или пароль"}, 401)
+            return self._json({"error": "Invalid login or password", "code": "bad_credentials"}, 401)
         if path == "/api/logout":
             auth.drop_session(self._cookie_token())
             return self._json({"ok": True}, extra={
                 "Set-Cookie": "%s=; Path=/; HttpOnly; Max-Age=0" % COOKIE})
         if path == "/api/settings":
             if not self._user():
-                return self._json({"error": "требуется вход"}, 401)
+                return self._json({"error": "authentication required", "code": "auth_required"}, 401)
             cfg = store.load_config()
             data, code = settings_save(self._body(), cfg)
             return self._json(data, code)
-        return self._json({"error": "неизвестный путь"}, 404)
+        return self._json({"error": "unknown endpoint", "code": "not_found"}, 404)
 
     def _api(self, name, q):
         cfg = store.load_config()
@@ -670,18 +672,18 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if head == "domains" and len(parts) > 1:
                 data = api_domain_detail(urllib.parse.unquote(parts[1]), q, cfg)
-                return self._json(data or {"error": "домен не найден"}, 200 if data else 404)
+                return self._json(data or {"error": "domain not found", "code": "no_domain"}, 200 if data else 404)
             if head == "databases" and len(parts) > 1:
-                # id базы SQLite — это путь к файлу, в нём есть слэши,
-                # поэтому хвост маршрута собираем обратно целиком
+                # A SQLite database id is a file path and contains slashes,
+                # so the tail of the route is put back together whole
                 data = api_database_detail(urllib.parse.unquote("/".join(parts[1:])), q, cfg)
-                return self._json(data or {"error": "база не найдена"}, 200 if data else 404)
+                return self._json(data or {"error": "database not found", "code": "no_database"}, 200 if data else 404)
             if head == "services" and len(parts) > 2 and parts[2] == "log":
                 data = api_service_log(urllib.parse.unquote(parts[1]), q, cfg)
-                return self._json(data or {"error": "служба не найдена"}, 200 if data else 404)
+                return self._json(data or {"error": "service not found", "code": "no_service"}, 200 if data else 404)
             fn = ROUTES.get(head)
             if not fn:
-                return self._json({"error": "неизвестный путь"}, 404)
+                return self._json({"error": "unknown endpoint", "code": "not_found"}, 404)
             return self._json(fn(q, cfg))
         except Exception as exc:
             return self._json({"error": "%s: %s" % (type(exc).__name__, exc)}, 500)
@@ -715,8 +717,8 @@ class Handler(BaseHTTPRequestHandler):
 class Server(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
-    # По умолчанию очередь всего 5 соединений: при обновлении страницы
-    # браузер открывает несколько сразу, и часть получала бы отказ.
+    # The default backlog is only 5: a browser opens several connections at
+    # once on refresh, and some of them would be refused.
     request_queue_size = 64
 
 
@@ -726,10 +728,10 @@ def main():
     host = cfg.get("bind_host", "127.0.0.1")
     port = int(cfg.get("bind_port", 8452))
     if not auth.load_users():
-        print("ВНИМАНИЕ: пользователей нет. Задайте: python3 tools/passwd.py <логин>",
+        print("WARNING: no users yet. Create one: python3 tools/passwd.py <login>",
               flush=True)
     srv = Server((host, port), Handler)
-    print("панель слушает http://%s:%d" % (host, port), flush=True)
+    print("dashboard listening on http://%s:%d" % (host, port), flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

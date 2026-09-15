@@ -1,12 +1,15 @@
-"""Состояние systemd-юнитов. Только чтение: панель не умеет ни start, ни stop,
-ни restart — снаружи выполнить systemctl через неё нельзя в принципе."""
+"""State of systemd units.
+
+Read-only: the dashboard has no start, stop or restart. There is no path
+through it that runs systemctl on someone else's behalf.
+"""
 import os
 import time
 
 from .sysinfo import run, _read, PAGE, HZ, uptime as sys_uptime
 
 def _num(val):
-    """systemd отдаёт «[not set]» и «infinity» — их нельзя совать в int()."""
+    """systemd returns "[not set]" and "infinity" — neither survives int()."""
     if val is None:
         return None
     val = val.strip()
@@ -26,7 +29,7 @@ def unit_status(name):
         k, _, v = line.partition("=")
         data[k] = v
     if not data:
-        return {"name": name, "active": "unknown", "error": err.strip()[:200] or "юнит не найден"}
+        return {"name": name, "active": "unknown", "error": err.strip()[:200] or "unit not found"}
     pid = _num(data.get("MainPID")) or 0
     started = None
     mono = data.get("ExecMainStartTimestampMonotonic")

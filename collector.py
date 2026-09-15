@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Сборщик метрик.
+"""The metrics collector.
 
-Отдельный процесс: если веб-часть упадёт или её перезапустят, история
-продолжит копиться. Задачи разнесены по интервалам — дешёвые опрашиваются
-часто, дорогие редко. du по каталогам и разбор больших логов сознательно
-поставлены на длинный шаг: панель не должна становиться причиной нагрузки,
-за которой она следит.
+A separate process: if the web side crashes or gets restarted, history keeps
+accumulating. Tasks are spread across intervals — cheap ones run often, costly
+ones rarely. Directory scans and parsing of large logs are deliberately put on
+a long cycle: the dashboard must not become the load it is meant to watch.
 """
 import json
 import os
@@ -41,20 +40,20 @@ class Task:
         t0 = time.time()
         try:
             self.fn(ctx)
-        except Exception as exc:  # одна упавшая задача не должна ронять сбор
-            log("задача %s: сбой — %s: %s" % (self.name, type(exc).__name__, exc))
+        except Exception as exc:  # one failed task must not stop collection
+            log("task %s failed: %s: %s" % (self.name, type(exc).__name__, exc))
         finally:
             self.next_run = time.time() + self.interval
         took = time.time() - t0
         if took > 5:
-            log("задача %s заняла %.1f с" % (self.name, took))
+            log("task %s took %.1f s" % (self.name, took))
 
 
 def log(msg):
     print("[%s] %s" % (time.strftime("%H:%M:%S"), msg), flush=True)
 
 
-# ---------- задачи ----------
+# ---------- tasks ----------
 
 def task_system(ctx):
     cpu = sysinfo.cpu_percent()
@@ -144,7 +143,7 @@ def task_nginx_logs(ctx):
 
 
 def _collect_error_logs(cfg):
-    """Хвост error.log каждого сайта — читаем только прирост, файл целиком не тянем."""
+    """Tail of each site's error log: only the appended part is read."""
     rows = []
     for dom in store.domains(cfg):
         path = dom.get("error_log")
@@ -210,8 +209,8 @@ def task_ssl(ctx):
             (ts, dom["domain"], info.get("issuer"), info.get("subject"),
              info.get("not_before"), info.get("not_after"), info.get("days_left"),
              info.get("status"), info.get("source")))
-    # Сертификаты, не привязанные к домену: сертификат на IP-адрес общий
-    # для нескольких служб, и его истечение ломает не один сайт, а сразу все.
+    # Certificates not tied to a domain: a certificate issued for an IP is
+    # usually shared by several services, so its expiry breaks all of them.
     for extra in cfg.get("extra_certs", []):
         info = ssl_check.from_file(extra.get("path"))
         if extra.get("host"):
@@ -239,16 +238,18 @@ def task_ssl(ctx):
 
 
 def task_whois(ctx):
-    """Срок регистрации доменов. Реестры не любят частых запросов, поэтому
-    интервал большой, а между доменами делается пауза. Неудачный запрос не
-    затирает прошлый ответ: лучше показать вчерашние данные с пометкой,
-    чем пустое поле."""
+    """Domain registration expiry.
+
+    Registries dislike frequent queries, so the interval is long and there is a
+    pause between domains. A failed query does not overwrite the previous
+    answer: yesterday's data with a note beats an empty field.
+    """
     cfg = ctx["cfg"]
     th = cfg.get("thresholds", {})
     previous, prev_ts = store.get_latest("whois", {})
     previous = previous or {}
-    # При перезапуске службы задача запускается снова. Реестр от этого
-    # защищаем сами: если прошлый ответ ещё свежий, к нему не ходим.
+    # Restarting the unit runs this task again. The registry is shielded from
+    # that here: if the previous answer is still fresh, we do not ask again.
     interval = cfg.get("intervals", {}).get("whois", 43200)
     if previous and prev_ts and (time.time() - prev_ts) < interval * 0.9:
         ctx["whois"] = previous
@@ -265,11 +266,11 @@ def task_whois(ctx):
             stale["stale"] = True
             stale["last_error"] = info["error"]
             stale["checked"] = int(time.time())
-            # пересчитываем остаток дней от сохранённой даты
+            # recompute the remaining days from the stored date
             days = int((stale["paid_till"] - time.time()) // 86400)
             stale["days_left"] = days
             out[dom["id"]] = stale
-            log("whois %s: %s, показываем прошлый ответ" % (dom["domain"], info["error"]))
+            log("whois %s: %s, keeping the previous answer" % (dom["domain"], info["error"]))
             continue
         info["stale"] = False
         info["checked"] = int(time.time())
@@ -339,8 +340,8 @@ def _build_snapshot(ctx, cfg):
 
 
 def task_rollup(ctx):
-    """Свёртка в часовые точки и чистка старых данных: панель не должна
-    растить свою базу бесконечно."""
+    """Roll up into hourly points and prune old rows: the dashboard must not
+    grow its own database forever."""
     cfg = ctx["cfg"]
     ret = cfg.get("retention", {})
     hi = int(ret.get("highres_days", 7)) * 86400
@@ -363,8 +364,8 @@ def task_rollup(ctx):
 
 
 def bootstrap_history(ctx):
-    """Однократно при первом запуске поднимаем историю трафика из уже
-    написанных логов — иначе сутки графики были бы пустыми."""
+    """Once, on first run, rebuild traffic history from the logs already on
+    disk — otherwise the charts would stay blank for a day."""
     cfg = ctx["cfg"]
     have = store.one("SELECT COUNT(*) n FROM domain_traffic")
     if have and have["n"] > 0:
@@ -382,8 +383,8 @@ def bootstrap_history(ctx):
             store.writemany(
                 "INSERT INTO domain_traffic(ts,domain,requests,c2xx,c3xx,c4xx,c5xx,bytes,span)"
                 " VALUES(?,?,?,?,?,?,?,?,?)", rows)
-            log("история из лога %s: %d точек" % (dom["domain"], len(rows)))
-        # позиция чтения переводится в конец, чтобы не посчитать те же строки дважды
+            log("history rebuilt from %s log: %d points" % (dom["domain"], len(rows)))
+        # move the read position to the end so the same lines are not counted twice
         nginxlog.Tailer(path).read_new(max_bytes=1)
 
 
@@ -394,7 +395,7 @@ def main():
     cfg = store.load_config()
     ctx = {"cfg": cfg, "tailers": {}}
     iv = cfg.get("intervals", {})
-    log("коллектор запущен, доменов под наблюдением: %d" % len(store.domains(cfg)))
+    log("collector started, domains monitored: %d" % len(store.domains(cfg)))
     bootstrap_history(ctx)
 
     tasks = [
@@ -410,7 +411,7 @@ def main():
         Task("alerts", task_alerts, 60, jitter=30),
         Task("rollup", task_rollup, 3600, jitter=120),
     ]
-    sysinfo.cpu_percent()  # первый замер задаёт точку отсчёта
+    sysinfo.cpu_percent()  # the first sample only establishes a baseline
     sysinfo.network()
     sysinfo.processes(limit=1)
 
@@ -421,17 +422,17 @@ def main():
                 break
             if t.due(now):
                 t.run(ctx)
-        # конфиг перечитываем на ходу: добавленный домен подхватится
-        # без перезапуска службы
+        # The config is re-read on the fly: a domain added through the page
+        # is picked up without restarting the unit
         try:
             fresh = store.load_config()
             if fresh != ctx["cfg"]:
                 ctx["cfg"] = fresh
-                log("конфигурация перечитана")
+                log("configuration reloaded")
         except (OSError, ValueError):
             pass
         time.sleep(2)
-    log("коллектор остановлен")
+    log("collector stopped")
 
 
 if __name__ == "__main__":

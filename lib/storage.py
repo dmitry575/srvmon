@@ -1,8 +1,9 @@
-"""Диск: разделы, размеры наблюдаемых каталогов и просмотр дерева.
+"""Storage: filesystems, sizes of watched directories, directory browsing.
 
-Просмотр строго читающий: ни удаления, ни записи, ни чтения содержимого
-файлов. Выход за пределы разрешённых корней невозможен — путь разворачивается
-через realpath и сверяется с белым списком, так что симлинк наружу не помогает.
+Browsing is strictly read-only: nothing is deleted, nothing is written, and
+file contents are never read. Escaping the allowed roots is not possible —
+every path is resolved through realpath before being checked against the
+allowlist, so a symlink pointing outside does not help.
 """
 import os
 import time
@@ -12,9 +13,9 @@ from .sysinfo import du_bytes, filesystems
 DEFAULT_ROOTS = ["/root", "/home", "/srv", "/opt", "/var/www", "/var/log",
                  "/var/lib/mysql", "/var/cache", "/etc/nginx"]
 
-# Имена, которые в браузере каталогов помечаются и не открываются. Это не
-# защита сама по себе — содержимое файлов не читается вовсе, — а подсказка
-# глазу. Свои имена добавляются в config.json ключом "sensitive_names".
+# Names flagged in the directory browser and never opened. This is not a
+# protection in itself — file contents are never read at all — but a hint for
+# the eye. Add your own through "sensitive_names" in config.json.
 DEFAULT_DENY = {
     "privkey.pem", "private.key", "server.key", ".env", ".env.local",
     "id_rsa", "id_ed25519", "id_ecdsa", ".my.cnf", ".pgpass", ".netrc",
@@ -27,8 +28,8 @@ DENY_NAMES = set(DEFAULT_DENY)
 
 
 def configure(cfg):
-    """Разрешённые для просмотра корни и помечаемые имена берутся из
-    конфигурации, если они там заданы; иначе остаются разумные значения."""
+    """Take browsable roots and flagged names from the configuration when
+    they are set there; otherwise keep sensible defaults."""
     global ALLOWED_ROOTS, DENY_NAMES
     roots = cfg.get("browse_roots")
     if isinstance(roots, list) and roots:
@@ -42,7 +43,7 @@ def configure(cfg):
 
 
 def safe_path(path):
-    """Возвращает нормализованный путь либо None, если он вне разрешённых корней."""
+    """Return the normalised path, or None if it lies outside the roots."""
     if not path:
         return None
     try:
@@ -58,9 +59,9 @@ def safe_path(path):
 def listdir(path, limit=400):
     real = safe_path(path)
     if not real:
-        return {"error": "путь вне разрешённых каталогов", "path": path}
+        return {"error": "path is outside the allowed directories", "path": path}
     if not os.path.isdir(real):
-        return {"error": "это не каталог", "path": real}
+        return {"error": "not a directory", "path": real}
     entries = []
     try:
         with os.scandir(real) as it:
@@ -79,7 +80,7 @@ def listdir(path, limit=400):
                     "sensitive": name in DENY_NAMES,
                 })
     except PermissionError:
-        return {"error": "нет прав на чтение каталога", "path": real}
+        return {"error": "no permission to read the directory", "path": real}
     entries.sort(key=lambda e: (not e["dir"], -(e["size"] or 0), e["name"]))
     parent = os.path.dirname(real)
     return {
@@ -92,8 +93,8 @@ def listdir(path, limit=400):
 
 
 def dir_sizes(paths, timeout=90):
-    """du по списку наблюдаемых каталогов. Зовётся редко: на 40 ГБ данных
-    полный обход стоит заметного времени и дисковых операций."""
+    """Run du over the watched directories. Called rarely: across tens of
+    gigabytes a full walk costs real time and disk operations."""
     out = []
     for p in paths:
         size = du_bytes(p, timeout=timeout)
@@ -103,7 +104,7 @@ def dir_sizes(paths, timeout=90):
 
 
 def top_subdirs(path, limit=12, timeout=90):
-    """Крупнейшие подкаталоги одного уровня — чтобы найти, где ушло место."""
+    """Largest subdirectories one level down — to find where space went."""
     real = safe_path(path)
     if not real or not os.path.isdir(real):
         return []

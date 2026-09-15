@@ -1,5 +1,8 @@
-"""Хранилище метрик. SQLite, потому что панель обязана быть легче того,
-за чем она следит: на сервере 3.8 ГБ памяти и она почти вся занята."""
+"""Metrics storage.
+
+SQLite, because the dashboard has to be lighter than what it watches: this
+was written for a box with 3.8 GB of RAM, nearly all of it already in use.
+"""
 import json
 import os
 import sqlite3
@@ -99,7 +102,8 @@ def load_config():
 
 
 def save_config(cfg):
-    """Пишем через временный файл: оборванная запись оставила бы панель без конфига."""
+    """Write through a temporary file: an interrupted write would leave the
+    dashboard with no configuration at all."""
     tmp = CONFIG_PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(cfg, fh, ensure_ascii=False, indent=2)
@@ -127,8 +131,8 @@ def get_latest(key, default=None):
 
 
 def migrate():
-    """Добавляет колонки, появившиеся после первой версии схемы.
-    Нужно тем, кто обновляет панель, а не ставит с нуля."""
+    """Add columns introduced after the first version of the schema.
+    Needed by anyone upgrading rather than installing from scratch."""
     c = conn()
     have = {r["name"] for r in c.execute("PRAGMA table_info(events)")}
     for col in ("tpl", "params"):
@@ -138,7 +142,8 @@ def migrate():
 
 
 def open_event(kind, subject, severity, message, tpl=None, params=None):
-    """Событие открывается один раз: пока проблема не закрыта, дубликатов нет."""
+    """An event opens once: while the problem is unresolved there are no
+    duplicates."""
     c = conn()
     row = c.execute(
         "SELECT id FROM events WHERE kind=? AND subject=? AND resolved_ts IS NULL",
@@ -165,7 +170,7 @@ def close_event(kind, subject, message=None):
     c.execute("INSERT INTO events(ts, kind, severity, subject, message, resolved_ts,"
               " tpl, params) VALUES(?,?,?,?,?,?,?,?)",
               (int(time.time()), kind + ".recovered", "info", subject,
-               message or "восстановлено", int(time.time()), "recovered",
+               message or "recovered", int(time.time()), "recovered",
                json.dumps({"subject": subject}, ensure_ascii=False)))
     c.commit()
     return row["id"]

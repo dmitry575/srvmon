@@ -1,13 +1,13 @@
-"""Срок регистрации домена.
+"""Domain registration expiry.
 
-Запрашиваем реестр напрямую по порту 43 — внешняя утилита не нужна, а
-форматы ответов у зон разные, и разбирать их всё равно пришлось бы самим.
-Для .ru/.su/.рф сервер известен заранее; для прочих зон он выясняется
-у IANA и запоминается в конфиге сессии.
+The registry is queried directly on port 43 — no external utility is needed,
+and since every zone answers in its own format, the parsing would have to be
+ours anyway. For .ru/.su/.рф the server is known upfront; for other zones it
+is resolved through IANA and remembered for the session.
 
-Реестры не любят частых обращений, поэтому коллектор ходит сюда раз в
-двенадцать часов, а между доменами делает паузу. Если запрос не удался,
-показываются последние удачные данные с пометкой, а не пустота.
+Registries dislike frequent queries, so the collector comes here once every
+twelve hours and pauses between domains. If a query fails, the last successful
+answer is shown with a note rather than an empty field.
 """
 import re
 import socket
@@ -20,7 +20,7 @@ DIRECT = {
     "org": "whois.pir.org", "io": "whois.nic.io", "dev": "whois.nic.google",
 }
 
-# Поле с датой окончания называется по-разному в каждом реестре.
+# The expiry field is named differently in every registry.
 EXPIRY_KEYS = (
     "paid-till", "registry expiry date", "expiry date", "expiration date",
     "registrar registration expiration date", "expires", "expire",
@@ -117,7 +117,7 @@ def _collect(text):
 
 
 def lookup(domain, thresholds=None):
-    """Возвращает срок регистрации и сопутствующие данные по домену."""
+    """Return the registration expiry and related facts for a domain."""
     th = thresholds or {}
     warn = th.get("domain_warning_days", 30)
     crit = th.get("domain_critical_days", 10)
@@ -126,18 +126,18 @@ def lookup(domain, thresholds=None):
            "registrar": None, "state": None, "nservers": [], "whois_server": None}
     server = _server_for(domain)
     if not server:
-        res["error"] = "не удалось определить сервер whois для зоны"
+        res["error"] = "could not determine the whois server for this zone"
         res["status"] = "unknown"
         return res
     res["whois_server"] = server
     try:
         text = _query(server, domain)
     except OSError as exc:
-        res["error"] = "whois недоступен: %s" % str(exc)[:120]
+        res["error"] = "whois unreachable: %s" % str(exc)[:120]
         res["status"] = "unknown"
         return res
     if re.search(r"(?i)no entries found|not found|no match|nothing found", text):
-        res["error"] = "домен не найден в реестре"
+        res["error"] = "domain not found in the registry"
         res["status"] = "unknown"
         return res
 
@@ -170,5 +170,5 @@ def lookup(domain, thresholds=None):
         res["days_left"] = None
         res["status"] = "unknown"
         if not res["error"]:
-            res["error"] = "в ответе реестра нет даты окончания"
+            res["error"] = "the registry answer carries no expiry date"
     return res

@@ -1,11 +1,11 @@
-"""Базы данных: MySQL, PostgreSQL и файловые SQLite.
+"""Databases: MySQL, PostgreSQL and file-based SQLite.
 
-Каждый движок читается своим способом, но наружу отдаёт одинаковый набор
-полей, поэтому страница со списком баз не знает, что под ней.
+Every engine is read its own way but exposes the same set of fields, so the
+list page does not need to know what is underneath.
 
-Пароли панель не хранит нигде: MySQL читается через штатный
-/etc/mysql/debian.cnf, доступный только root, PostgreSQL — через psql от
-системного пользователя postgres, SQLite открывается прямо файлом.
+No password is stored anywhere: MySQL is read through the stock
+/etc/mysql/debian.cnf, readable by root only; PostgreSQL through psql running
+as the postgres system user; SQLite is opened as a plain file.
 """
 import os
 import sqlite3
@@ -18,15 +18,15 @@ MYSQL = "/usr/bin/mysql"
 
 
 def _mysql(sql, defaults_file, timeout=25):
-    """Читающие запросы к MySQL идут через клиент с --defaults-file.
-    Панель нигде не принимает SQL снаружи: все запросы зашиты в коде."""
+    """Read queries go through the client with --defaults-file. No SQL is ever
+    accepted from outside: every statement is hard-coded here."""
     if not os.path.exists(MYSQL):
-        return None, "клиент mysql не найден"
+        return None, "mysql client not found"
     cmd = [MYSQL, f"--defaults-file={defaults_file}", "--batch", "--raw",
            "--skip-column-names", "-e", sql]
     code, out, err = run(cmd, timeout=timeout)
     if code != 0:
-        return None, (err.strip().splitlines() or ["ошибка запроса"])[-1][:200]
+        return None, (err.strip().splitlines() or ["query failed"])[-1][:200]
     return [line.split("\t") for line in out.splitlines() if line], None
 
 
@@ -114,26 +114,26 @@ def mysql_processlist(defaults_file, limit=25):
         defaults_file)
     if rows is None:
         return [], err
-    # Текст запроса намеренно не забираем: в нём могут оказаться данные
-    # пользователей и это ровно то, чему в панели не место.
+    # The query text is deliberately not collected: it may carry user data,
+    # which is exactly what does not belong on this page.
     return [{"id": r[0], "user": r[1], "db": r[2], "command": r[3],
              "time": int(r[4]) if r[4].isdigit() else 0, "state": r[5]}
             for r in rows if len(r) >= 6], None
 
 
 def sqlite_info(path, name=None, with_tables=False, limit=20):
-    """SQLite открываем только на чтение и через immutable-режим: активный
-    писатель со стороны сайта от этого никак не пострадает."""
+    """SQLite is opened read-only and immutable, so an active writer on the
+    site side is not disturbed in any way."""
     info = {"engine": "sqlite", "name": name or os.path.basename(path),
             "path": path, "size": None, "tables": None, "connections": None,
             "error": None, "table_list": [], "system": False}
     if not os.path.exists(path):
-        info["error"] = "файл не найден"
+        info["error"] = "file not found"
         return info
     try:
         info["size"] = os.path.getsize(path)
         info["mtime"] = int(os.path.getmtime(path))
-        # WAL и журнал тоже занимают место
+        # The WAL and journal take space too
         extra = 0
         for suffix in ("-wal", "-shm"):
             if os.path.exists(path + suffix):
@@ -166,7 +166,7 @@ def sqlite_info(path, name=None, with_tables=False, limit=20):
                 except sqlite3.Error:
                     idx = 0
                 tbls.append({"name": tname, "rows": n, "indexes": idx})
-            # dbstat есть не во всякой сборке; если есть — получим точные размеры
+            # dbstat is not in every build; when present it gives exact sizes
             try:
                 sizes = {r[0]: r[1] for r in con.execute(
                     "SELECT name, SUM(pgsize) FROM dbstat GROUP BY name")}
@@ -185,8 +185,8 @@ def sqlite_info(path, name=None, with_tables=False, limit=20):
 
 
 def collect_all(cfg):
-    """Все базы сервера: MySQL и PostgreSQL целиком, SQLite — те, что
-    объявлены у доменов (найти их иначе, кроме как по конфигурации, нельзя)."""
+    """Every database on the server: all of MySQL and PostgreSQL, plus the
+    SQLite files declared by domains — there is no other way to find those."""
     out = []
     defaults = cfg.get("mysql_defaults_file", "/etc/mysql/debian.cnf")
     owner = {}

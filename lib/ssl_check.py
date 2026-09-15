@@ -1,5 +1,8 @@
-"""Сертификаты. Смотрим и файл на диске, и то, что реально отдаёт порт 443:
-на диске может лежать свежий сертификат, который nginx ещё не перечитал."""
+"""Certificates.
+
+Both the file on disk and what port 443 actually serves are checked: a fresh
+certificate may be sitting on disk while nginx still serves the old one.
+"""
 import os
 import socket
 import ssl
@@ -22,11 +25,11 @@ def _parse_openssl_date(raw):
 
 def from_file(path):
     if not path or not os.path.exists(path):
-        return {"error": "файл сертификата не найден", "source": "file", "path": path}
+        return {"error": "certificate file not found", "source": "file", "path": path}
     code, out, err = run(["openssl", "x509", "-in", path, "-noout",
                           "-subject", "-issuer", "-startdate", "-enddate"], timeout=10)
     if code != 0:
-        return {"error": err.strip()[:200] or "openssl не смог прочитать файл",
+        return {"error": err.strip()[:200] or "openssl could not read the file",
                 "source": "file", "path": path}
     data = {}
     for line in out.splitlines():
@@ -46,11 +49,11 @@ def _issuer_cn(raw):
         part = part.strip()
         if part.upper().startswith("CN"):
             return part.split("=", 1)[-1].strip()
-    return raw.strip() or "неизвестен"
+    return raw.strip() or "unknown"
 
 
 def from_live(host, port=443, timeout=8):
-    """Живая проверка: подключаемся и берём сертификат прямо из рукопожатия."""
+    """Live check: connect and take the certificate from the handshake."""
     ctx = ssl.create_default_context()
     try:
         with socket.create_connection((host, port), timeout=timeout) as sock:
@@ -80,7 +83,7 @@ def from_live(host, port=443, timeout=8):
     alt = [v for k, v in cert.get("subjectAltName", ()) if k == "DNS"]
     return _finish({
         "source": "live", "host": host, "tls_version": proto,
-        "subject": subject, "issuer": issuer or "неизвестен",
+        "subject": subject, "issuer": issuer or "unknown",
         "not_before": not_before, "not_after": not_after, "alt_names": alt,
     })
 

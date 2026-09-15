@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Установка панели: службы systemd, конфигурация, первый пользователь.
-# Ставится рядом с тем, что уже работает на сервере: ничего чужого не трогает,
-# порты не занимает кроме своего, существующие конфигурации не переписывает.
+# Install the dashboard: systemd units, configuration, first user.
+# It settles next to whatever already runs on the server: nothing else is
+# touched, no port but its own is taken, no existing config is rewritten.
 #
-#   sudo ./install.sh                     установить и запустить
-#   sudo ./install.sh --port 9000         другой порт для локального сервера
-#   sudo ./install.sh --user bob          другое имя пользователя
-#   sudo ./install.sh --no-start          только подготовить, не запускать
-#   sudo ./install.sh --uninstall         убрать службы (данные остаются)
+#   sudo ./install.sh                     install and start
+#   sudo ./install.sh --port 9000         another port for the local server
+#   sudo ./install.sh --user bob          another login
+#   sudo ./install.sh --no-start          prepare only, do not start
+#   sudo ./install.sh --uninstall         remove the units (data is kept)
 
 set -euo pipefail
 
@@ -18,11 +18,12 @@ PASSWORD=""
 START=1
 UNINSTALL=0
 PYTHON="$(command -v python3 || true)"
-# Каталог юнитов вынесен в переменную: так проверка установки может писать
-# во временное место и не трогать то, что уже работает на машине.
+# The unit directory is a variable so the install test can write to a temporary
+# place without touching what already runs on the machine.
 UNIT_DIR="${SRVMON_UNIT_DIR:-/etc/systemd/system}"
 
-# Язык сообщений берём из окружения: скрипт запускают и русскоязычные, и нет.
+# Message language comes from the environment: this is run by Russian and
+# non-Russian speakers alike.
 if [[ "${LANG:-}" == ru* || "${LC_ALL:-}" == ru* ]]; then RU=1; else RU=0; fi
 say() { if [[ $RU -eq 1 ]]; then echo -e "$1"; else echo -e "$2"; fi; }
 die() { say "✗ $1" "✗ $2" >&2; exit 1; }
@@ -52,7 +53,7 @@ if [[ $UNINSTALL -eq 1 ]]; then
   exit 0
 fi
 
-# --- проверки окружения ---
+# --- environment checks ---
 [[ -n "$PYTHON" ]] || die "Нужен python3 (3.8 или новее)" "python3 (3.8+) is required"
 "$PYTHON" - <<'PY' || die "Нужен Python 3.8 или новее" "Python 3.8 or newer is required"
 import sys
@@ -63,7 +64,7 @@ command -v systemctl >/dev/null || die "Нужен systemd" "systemd is required
 say "Панель: $DIR" "Dashboard: $DIR"
 say "Python: $($PYTHON -V 2>&1)" "Python: $($PYTHON -V 2>&1)"
 
-# --- конфигурация ---
+# --- configuration ---
 mkdir -p "$DIR/var"
 chmod 700 "$DIR/var"
 if [[ ! -f "$DIR/config.json" ]]; then
@@ -73,7 +74,7 @@ import json, sys
 path, port = sys.argv[1], int(sys.argv[2])
 cfg = json.load(open(path, encoding='utf-8'))
 cfg['bind_port'] = port
-# В примере лежит показательный домен: он выключен, но и путаться не должен.
+# The example carries a demonstration domain: disabled, but better gone.
 cfg['domains'] = []
 json.dump(cfg, open(path, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
 PY
@@ -85,14 +86,14 @@ else
   PORT="$("$PYTHON" -c "import json;print(json.load(open('$DIR/config.json'))['bind_port'])")"
 fi
 
-# --- порт не должен быть занят ---
+# --- the port must be free ---
 if ss -tln 2>/dev/null | grep -q ":$PORT "; then
   OWNER="$(ss -tlnp 2>/dev/null | awk -v p=":$PORT " '$4 ~ p {print $6}' | head -1)"
   die "Порт $PORT уже занят ($OWNER). Укажите другой: --port ХХХХ" \
       "Port $PORT is already in use ($OWNER). Pick another one: --port NNNN"
 fi
 
-# --- первый пользователь ---
+# --- first user ---
 if [[ ! -f "$DIR/var/users.json" ]]; then
   if [[ -z "$PASSWORD" ]]; then
     PASSWORD="$("$PYTHON" -c "
@@ -107,7 +108,7 @@ else
   say "Пользователь уже заведён, пароль не меняю." "User already exists, password left as is."
 fi
 
-# --- службы systemd ---
+# --- systemd units ---
 write_unit() {
   local name="$1" desc_ru="$2" desc_en="$3" exec="$4" extra="$5"
   mkdir -p "$UNIT_DIR"
@@ -122,9 +123,9 @@ WorkingDirectory=$DIR
 ExecStart=$PYTHON -u $DIR/$exec
 Restart=always
 RestartSec=5
-# Панель обязана быть дешевле того, за чем следит. MemoryHigh — мягкий порог:
-# при его превышении ядро сначала отдаёт файловый кэш, и лишь MemoryMax
-# останавливает настоящий рост.
+# The dashboard has to be cheaper than what it watches. MemoryHigh is a soft
+# limit: crossing it makes the kernel reclaim the file cache first, and only
+# MemoryMax stops real growth.
 MemoryHigh=96M
 MemoryMax=320M
 $extra
@@ -167,7 +168,7 @@ if [[ $START -eq 1 ]]; then
   say "Службы запущены и включены в автозапуск." "Services started and enabled on boot."
 fi
 
-# --- итог ---
+# --- summary ---
 echo
 say "── Готово ──" "── Done ──"
 say "Панель слушает: http://127.0.0.1:$PORT" "Dashboard listens on: http://127.0.0.1:$PORT"

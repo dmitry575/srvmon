@@ -1,7 +1,7 @@
-# Быстрая проверка того, что можно проверить без сервера: синтаксис,
-# разбор конфигурации и полнота словаря переводов. Полные проверки
-# (tools/selftest.py и tools/uitest.js) требуют работающей панели и
-# запускаются на самой машине.
+# A quick check of everything verifiable without a server: syntax, the example
+# configuration, and completeness of the translation dictionary. The full
+# suites (tools/selftest.py and tools/uitest.js) need a running dashboard and
+# are meant to be run on the machine itself.
 name: check
 
 on:

@@ -1,11 +1,12 @@
-"""Правила предупреждений.
+"""Alert rules.
 
-Каждое правило возвращает либо срабатывание, либо None. Открытые события
-хранятся в базе и закрываются сами, когда причина исчезла, — на странице
-Alerts из этого складывается лента.
+Each rule returns either a firing or None. Open events live in the database
+and close themselves once the cause is gone — that is what makes the Alerts
+page a timeline rather than a wall of repeats.
 
-Доставка (Telegram, почта, Discord) сюда не зашита: notifier'ы подключаются
-одной функцией dispatch, поэтому канал добавляется без правки правил.
+Delivery (Telegram, email, Discord) is not wired in here: notifiers attach
+through a single dispatch function, so a channel is added without touching
+any rule.
 """
 import time
 
@@ -15,7 +16,7 @@ SEV_ORDER = {"critical": 0, "warning": 1, "info": 2}
 
 
 def evaluate(snapshot, cfg):
-    """snapshot — то, что собрал коллектор. Возвращает список активных проблем."""
+    """snapshot is whatever the collector gathered. Returns active problems."""
     th = cfg.get("thresholds", {})
     out = []
 
@@ -27,23 +28,23 @@ def evaluate(snapshot, cfg):
     if disk.get("percent") is not None:
         pct = disk["percent"]
         if pct >= th.get("disk_critical", 90):
-            out.append(_a("disk", "/", "critical", "Диск заполнен на %.0f%%" % pct,
+            out.append(_a("disk", "/", "critical", "Disk is %.0f%% full" % pct,
                           tpl="disk.full", pct=round(pct)))
         elif pct >= th.get("disk_warning", 80):
-            out.append(_a("disk", "/", "warning", "Диск заполнен на %.0f%%" % pct,
+            out.append(_a("disk", "/", "warning", "Disk is %.0f%% full" % pct,
                           tpl="disk.full", pct=round(pct)))
 
     if mem.get("percent") is not None:
         pct = mem["percent"]
         if pct >= th.get("ram_critical", 95):
-            out.append(_a("ram", "memory", "critical", "Память занята на %.0f%%" % pct,
+            out.append(_a("ram", "memory", "critical", "Memory is %.0f%% used" % pct,
                           tpl="ram.high", pct=round(pct)))
         elif pct >= th.get("ram_warning", 85):
-            out.append(_a("ram", "memory", "warning", "Память занята на %.0f%%" % pct,
+            out.append(_a("ram", "memory", "warning", "Memory is %.0f%% used" % pct,
                           tpl="ram.high", pct=round(pct)))
     if mem.get("swap_percent", 0) >= 95 and mem.get("swap_total"):
         out.append(_a("swap", "swap", "warning",
-                      "Подкачка занята полностью (%.0f%%)" % mem["swap_percent"],
+                      "Swap is completely used (%.0f%%)" % mem["swap_percent"],
                       tpl="swap.full", pct=round(mem["swap_percent"])))
 
     cores = load.get("cores") or 1
@@ -53,11 +54,11 @@ def evaluate(snapshot, cfg):
             pass
         if load["load1"] >= th.get("load_critical", 8.0):
             out.append(_a("load", "loadavg", "critical",
-                          "Очередь задач %.2f при %d ядрах" % (load["load1"], cores),
+                          "Load average %.2f on %d cores" % (load["load1"], cores),
                           tpl="load.high", load=round(load["load1"], 2), cores=cores))
         elif load["load1"] >= th.get("load_warning", 4.0):
             out.append(_a("load", "loadavg", "warning",
-                          "Очередь задач %.2f при %d ядрах" % (load["load1"], cores),
+                          "Load average %.2f on %d cores" % (load["load1"], cores),
                           tpl="load.high", load=round(load["load1"], 2), cores=cores))
 
     for fs in (sysm.get("filesystems") or []):
@@ -65,7 +66,7 @@ def evaluate(snapshot, cfg):
             continue
         if fs["percent"] >= th.get("disk_critical", 90) and fs["total"] > 1 << 30:
             out.append(_a("disk", fs["mount"], "critical",
-                          "Раздел %s заполнен на %.0f%%" % (fs["mount"], fs["percent"]),
+                          "Filesystem %s is %.0f%% full" % (fs["mount"], fs["percent"]),
                           tpl="disk.mount_full", mount=fs["mount"], pct=round(fs["percent"])))
 
     for dom in snapshot.get("domains", []):
@@ -73,7 +74,7 @@ def evaluate(snapshot, cfg):
         hl = dom.get("health") or {}
         if hl.get("state") == "down":
             out.append(_a("domain.down", name, "critical",
-                          "Сайт %s недоступен: %s" % (name, hl.get("error") or "нет ответа"),
+                          "%s is down: %s" % (name, hl.get("error") or "no response"),
                           tpl="domain.down", domain=name,
                           reason=hl.get("error"), reason_code=hl.get("error_code")))
         elif hl.get("state") == "warning" and hl.get("error"):
@@ -84,7 +85,7 @@ def evaluate(snapshot, cfg):
         be = dom.get("backend") or {}
         if be and not be.get("ok"):
             out.append(_a("backend.down", name, "critical",
-                          "Бэкенд %s (порт %s) не отвечает: %s" % (
+                          "Backend of %s (port %s) is not responding: %s" % (
                               name, dom.get("backend_port"),
                               be.get("error") or "HTTP %s" % be.get("status")),
                           tpl="backend.down", domain=name, port=dom.get("backend_port"),
@@ -93,41 +94,41 @@ def evaluate(snapshot, cfg):
         days = ssl_i.get("days_left")
         if days is not None:
             if days < 0:
-                out.append(_a("ssl", name, "critical", "Сертификат %s просрочен" % name,
+                out.append(_a("ssl", name, "critical", "Certificate for %s has expired" % name,
                               tpl="ssl.expired", domain=name))
             elif days < th.get("ssl_critical_days", 8):
                 out.append(_a("ssl", name, "critical",
-                              "Сертификат %s истекает через %d дн." % (name, days),
+                              "Certificate for %s expires in %d days" % (name, days),
                               tpl="ssl.expiring", domain=name, days=days))
             elif days < th.get("ssl_warning_days", 30):
                 out.append(_a("ssl", name, "warning",
-                              "Сертификат %s истекает через %d дн." % (name, days),
+                              "Certificate for %s expires in %d days" % (name, days),
                               tpl="ssl.expiring", domain=name, days=days))
         reg = dom.get("whois") or {}
         rdays = reg.get("days_left")
         if rdays is not None:
             if rdays < 0:
                 out.append(_a("domain.expired", name, "critical",
-                              "Регистрация домена %s истекла" % name,
+                              "Domain registration for %s has expired" % name,
                               tpl="domain.expired", domain=name))
             elif rdays < th.get("domain_critical_days", 10):
                 out.append(_a("domain.registration", name, "critical",
-                              "Регистрация %s заканчивается через %d дн." % (name, rdays),
+                              "Registration of %s expires in %d days" % (name, rdays),
                               tpl="domain.registration", domain=name, days=rdays))
             elif rdays < th.get("domain_warning_days", 30):
                 out.append(_a("domain.registration", name, "warning",
-                              "Регистрация %s заканчивается через %d дн." % (name, rdays),
+                              "Registration of %s expires in %d days" % (name, rdays),
                               tpl="domain.registration", domain=name, days=rdays))
 
         tr = dom.get("traffic_hour") or {}
         c5 = tr.get("c5xx") or 0
         if c5 >= th.get("http5xx_critical_per_hour", 100):
             out.append(_a("http5xx", name, "critical",
-                          "%s: %d ответов 5xx за час" % (name, c5),
+                          "%s: %d 5xx responses in the last hour" % (name, c5),
                           tpl="http5xx", domain=name, count=c5))
         elif c5 >= th.get("http5xx_warning_per_hour", 20):
             out.append(_a("http5xx", name, "warning",
-                          "%s: %d ответов 5xx за час" % (name, c5),
+                          "%s: %d 5xx responses in the last hour" % (name, c5),
                           tpl="http5xx", domain=name, count=c5))
 
     for svc in snapshot.get("services", []):
@@ -135,12 +136,12 @@ def evaluate(snapshot, cfg):
             continue
         if svc.get("active") == "failed":
             out.append(_a("service.failed", svc["name"], "critical",
-                          "Служба %s упала (%s)" % (svc["name"], svc.get("result") or "failed"),
+                          "Service %s failed (%s)" % (svc["name"], svc.get("result") or "failed"),
                           tpl="service.failed", service=svc["name"],
                           result=svc.get("result") or "failed"))
         elif svc.get("active") not in ("active", "activating"):
             out.append(_a("service.down", svc["name"], "warning",
-                          "Служба %s: состояние %s" % (svc["name"], svc.get("active")),
+                          "Service %s: state %s" % (svc["name"], svc.get("active")),
                           tpl="service.down", service=svc["name"], state=svc.get("active")))
 
     my = snapshot.get("mysql_status") or {}
@@ -149,11 +150,11 @@ def evaluate(snapshot, cfg):
         maxc = int(my.get("max_connections", 151))
         if conn_n >= th.get("mysql_conn_critical", int(maxc * 0.9)):
             out.append(_a("mysql.conn", "mysql", "critical",
-                          "MySQL: %d соединений из %d" % (conn_n, maxc),
+                          "MySQL: %d of %d connections in use" % (conn_n, maxc),
                           tpl="mysql.conn", used=conn_n, max=maxc))
         elif conn_n >= th.get("mysql_conn_warning", int(maxc * 0.66)):
             out.append(_a("mysql.conn", "mysql", "warning",
-                          "MySQL: %d соединений из %d" % (conn_n, maxc),
+                          "MySQL: %d of %d connections in use" % (conn_n, maxc),
                           tpl="mysql.conn", used=conn_n, max=maxc))
     except (TypeError, ValueError):
         pass
@@ -164,17 +165,17 @@ def evaluate(snapshot, cfg):
             continue
         name = info.get("domain") or key
         if days < 0:
-            out.append(_a("ssl", name, "critical", "Сертификат %s просрочен" % name,
+            out.append(_a("ssl", name, "critical", "Certificate for %s has expired" % name,
                           tpl="ssl.expired", domain=name))
         elif days < th.get("ssl_critical_days", 8):
             out.append(_a("ssl", name, "critical",
-                          "Сертификат %s истекает через %d дн. — %s" % (
+                          "Certificate for %s expires in %d days — %s" % (
                               name, days, info.get("note") or ""),
                           tpl="ssl.expiring_shared", domain=name, days=days,
                           note=info.get("note")))
         elif days < th.get("ssl_warning_days", 30):
             out.append(_a("ssl", name, "warning",
-                          "Сертификат %s истекает через %d дн." % (name, days),
+                          "Certificate for %s expires in %d days" % (name, days),
                           tpl="ssl.expiring", domain=name, days=days))
 
     pgs = snapshot.get("pg_status") or {}
@@ -184,15 +185,15 @@ def evaluate(snapshot, cfg):
         crit_at = th.get("pg_conn_critical", int(maxc * 0.9))
         if used >= crit_at:
             out.append(_a("pg.conn", "postgres", "critical",
-                          "PostgreSQL: %d соединений из %d" % (used, maxc),
+                          "PostgreSQL: %d of %d connections in use" % (used, maxc),
                           tpl="pg.conn", used=used, max=maxc))
         elif used >= warn_at:
             out.append(_a("pg.conn", "postgres", "warning",
-                          "PostgreSQL: %d соединений из %d" % (used, maxc),
+                          "PostgreSQL: %d of %d connections in use" % (used, maxc),
                           tpl="pg.conn", used=used, max=maxc))
     if pgs.get("idle_in_transaction", 0) >= th.get("pg_idle_tx_warning", 3):
         out.append(_a("pg.idle_tx", "postgres", "warning",
-                      "PostgreSQL: %d соединений застряли в транзакции"
+                      "PostgreSQL: %d connections stuck idle in transaction"
                       % pgs["idle_in_transaction"],
                       tpl="pg.idle_tx", count=pgs["idle_in_transaction"]))
 
@@ -204,7 +205,8 @@ def evaluate(snapshot, cfg):
 
 
 def growth_warnings(cfg):
-    """Рост баз считаем по собственным снимкам: неделю назад против сейчас."""
+    """Database growth is measured against our own snapshots: a week ago
+    versus now."""
     th = cfg.get("thresholds", {})
     pct_limit = th.get("db_growth_warning_pct", 15)
     out = []
@@ -220,13 +222,13 @@ def growth_warnings(cfg):
             continue
         first, last = series[0], series[-1]
         if last["ts"] - first["ts"] < 2 * 86400:
-            continue  # слишком короткая история, чтобы говорить о росте
+            continue  # too little history to call it growth
         if not first["size"]:
             continue
         growth = 100.0 * (last["size"] - first["size"]) / first["size"]
         if growth >= pct_limit:
             out.append(_a("db.growth", "%s:%s" % (engine, name), "warning",
-                          "База %s выросла на %.0f%% за %d дн." % (
+                          "Database %s grew by %.0f%% in %d days" % (
                               name, growth, max(1, (last["ts"] - first["ts"]) // 86400)),
                           tpl="db.growth", db=name, pct=round(growth),
                           days=max(1, (last["ts"] - first["ts"]) // 86400)))
@@ -234,11 +236,12 @@ def growth_warnings(cfg):
 
 
 def _a(kind, subject, severity, message, tpl=None, **params):
-    """Срабатывание несёт и готовый текст, и разобранный вид.
+    """A firing carries both ready text and a structured form.
 
-    Текст нужен журналу и будущим уведомлениям, где переводить некому.
-    Идентификатор шаблона с параметрами нужен странице: она собирает фразу
-    на том языке, который выбрал смотрящий, и не зависит от языка сервера.
+    The text is for the journal and for future notifications, where there is
+    nobody to translate. The template id with parameters is for the page: it
+    builds the phrase in the language the viewer picked, independent of the
+    language the server speaks.
     """
     return {"kind": kind, "subject": subject, "severity": severity,
             "message": message, "tpl": tpl or kind, "params": params,
@@ -246,8 +249,8 @@ def _a(kind, subject, severity, message, tpl=None, **params):
 
 
 def sync(active, cfg=None):
-    """Сверяет активные срабатывания с открытыми событиями в базе:
-    новое — открывает, исчезнувшее — закрывает и пишет «восстановлено»."""
+    """Reconcile active firings with open events in the database: a new one is
+    opened, a vanished one is closed and recorded as recovered."""
     active_keys = {(a["kind"], a["subject"]) for a in active}
     for a in active:
         store.open_event(a["kind"], a["subject"], a["severity"], a["message"],
@@ -265,11 +268,11 @@ NOTIFIERS = []
 
 
 def dispatch(active):
-    """Точка расширения под Telegram/почту/Discord: регистрируется функция,
-    принимающая список срабатываний. Сейчас каналов нет — событие просто
-    остаётся в базе и видно на странице Alerts."""
+    """Extension point for Telegram, email or Discord: register a function
+    that takes the list of firings. With no channel registered, an event simply
+    stays in the database and shows up on the Alerts page."""
     for fn in NOTIFIERS:
         try:
             fn(active)
-        except Exception:  # канал доставки не должен ронять сбор метрик
+        except Exception:  # a delivery channel must never break metric collection
             pass

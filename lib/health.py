@@ -1,12 +1,14 @@
-"""Проверка доступности сайтов: DNS -> TCP -> HTTP/HTTPS.
-Каждая ступень замеряется отдельно, чтобы в панели было видно не просто
-«сайт лежит», а что именно сломалось."""
+"""Site availability: DNS -> TCP -> HTTP/HTTPS.
+
+Each step is measured separately, so the dashboard can say what exactly
+broke instead of just "the site is down".
+"""
 import http.client
 import socket
 import ssl
 import time
 
-UA = "srvmon/1.0 (+local server monitoring)"  # только latin-1: HTTP-заголовки кириллицу не принимают
+UA = "srvmon/1.0 (+local server monitoring)"  # latin-1 only: HTTP headers take nothing else
 
 
 def _dns(host, timeout=5):
@@ -29,9 +31,9 @@ def _tcp(host, port, timeout=6):
         with socket.create_connection((host, port), timeout=timeout):
             return {"ok": True, "ms": round((time.perf_counter() - t0) * 1000, 1)}
     except socket.timeout:
-        return {"ok": False, "ms": None, "code": "timeout", "error": "таймаут TCP"}
+        return {"ok": False, "ms": None, "code": "timeout", "error": "TCP timeout"}
     except ConnectionRefusedError:
-        return {"ok": False, "ms": None, "code": "refused", "error": "соединение отклонено"}
+        return {"ok": False, "ms": None, "code": "refused", "error": "connection refused"}
     except OSError as exc:
         return {"ok": False, "ms": None, "code": "net", "error": str(exc)[:120]}
 
@@ -54,13 +56,13 @@ def _http(host, path="/", https=True, timeout=10, port=None):
                 "bytes": len(body), "location": resp.getheader("Location")}
     except ssl.SSLError as exc:
         return {"ok": False, "status": None, "ms": None, "code": "ssl",
-                "error": "ошибка SSL: %s" % str(exc)[:120]}
+                "error": "SSL error: %s" % str(exc)[:120]}
     except socket.timeout:
         return {"ok": False, "status": None, "ms": None, "code": "timeout",
-                "error": "таймаут HTTP"}
+                "error": "HTTP timeout"}
     except ConnectionRefusedError:
         return {"ok": False, "status": None, "ms": None, "code": "refused",
-                "error": "соединение отклонено"}
+                "error": "connection refused"}
     except (OSError, http.client.HTTPException) as exc:
         return {"ok": False, "status": None, "ms": None, "code": "net",
                 "error": str(exc)[:120]}
@@ -120,18 +122,18 @@ def check(dom, thresholds=None):
     if res["ok"] and res["resp_ms"]:
         if res["resp_ms"] >= crit_ms:
             res["state"] = "warning"
-            res["error"] = "очень медленный ответ: %.0f мс" % res["resp_ms"]
+            res["error"] = "very slow response: %.0f ms" % res["resp_ms"]
             res["error_code"] = "very_slow"
         elif res["resp_ms"] >= warn_ms and res["state"] == "ok":
             res["state"] = "warning"
-            res["error"] = "медленный ответ: %.0f мс" % res["resp_ms"]
+            res["error"] = "slow response: %.0f ms" % res["resp_ms"]
             res["error_code"] = "slow"
     return res
 
 
 def check_backend(port, path="/", timeout=6):
-    """Отдельная проверка самого бэкенда на localhost — она отличает
-    «упал сайт» от «упал nginx»."""
+    """A separate check of the backend on localhost: this is what tells
+    "the site is down" apart from "nginx is down"."""
     if not port:
         return None
     t0 = time.perf_counter()

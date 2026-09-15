@@ -1,6 +1,9 @@
-"""Вход в панель. Пароль хранится только в виде хеша PBKDF2-HMAC-SHA256
-с индивидуальной солью; восстановить его из файла нельзя.
-Сессия — случайный токен в базе, в cookie уходит только он."""
+"""Sign-in.
+
+The password is stored only as a PBKDF2-HMAC-SHA256 hash with a per-user
+salt; it cannot be recovered from the file. A session is a random token kept
+in the database — only that token travels in the cookie.
+"""
 import base64
 import hashlib
 import hmac
@@ -64,7 +67,7 @@ def set_user(login, password):
 def authenticate(login, password):
     user = load_users().get(login)
     if not user:
-        # считаем хеш всё равно: иначе по времени ответа видно, есть ли такой логин
+        # Hash anyway: otherwise response timing reveals whether the login exists
         hash_password(password)
         return False
     return verify_password(password, user["password"])

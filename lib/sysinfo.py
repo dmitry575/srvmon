@@ -1,5 +1,8 @@
-"""Системные показатели читаются прямо из /proc и штатных утилит.
-Никаких psutil: лишний пакет здесь стоил бы памяти, а всё нужное есть в ядре."""
+"""System metrics, read straight from /proc and stock utilities.
+
+No psutil: an extra package would cost memory here, and the kernel already
+exposes everything needed.
+"""
 import os
 import re
 import shutil
@@ -21,8 +24,8 @@ def _read(path):
 
 
 def cpu_percent():
-    """Доля занятого процессора между двумя вызовами. Первый вызов честно
-    возвращает None: посчитать нагрузку по одному снимку невозможно."""
+    """CPU busy share between two calls. The first call honestly returns None:
+    load cannot be derived from a single snapshot."""
     line = _read("/proc/stat").split("\n", 1)[0]
     parts = [int(x) for x in line.split()[1:]]
     idle = parts[3] + (parts[4] if len(parts) > 4 else 0)
@@ -73,8 +76,8 @@ def uptime():
 
 
 def network():
-    """Скорость по сумме внешних интерфейсов. lo и виртуальные пары не считаем:
-    трафик через петлю к каналу отношения не имеет."""
+    """Rate across external interfaces. Loopback and virtual pairs are skipped:
+    traffic through the loopback says nothing about the uplink."""
     now = time.time()
     rx = tx = 0
     per_iface = []
@@ -101,7 +104,7 @@ def network():
 
 
 def temperature():
-    """На виртуальной машине датчиков обычно нет — тогда честный None."""
+    """A virtual machine usually has no sensors — then an honest None."""
     best = None
     base = "/sys/class/thermal"
     if os.path.isdir(base):
@@ -163,12 +166,12 @@ SECRET_RE = re.compile(
 
 
 def mask_cmdline(cmd):
-    """Командная строка может содержать пароль — в панель он попасть не должен."""
+    """A command line may contain a password — it must not reach the page."""
     return SECRET_RE.sub(lambda m: m.group(0).split("=")[0].split(" ")[0] + "=***", cmd)
 
 
 def processes(limit=60):
-    """Снимок процессов с долей CPU, посчитанной по разнице тиков между вызовами."""
+    """Process snapshot with CPU share derived from the tick delta between calls."""
     now = time.time()
     boot = now - uptime()
     result = []
@@ -243,7 +246,7 @@ def _cpu_model():
 
 
 def run(cmd, timeout=15):
-    """Внешние команды всегда списком аргументов — shell не поднимаем нигде."""
+    """External commands always as an argument list — no shell anywhere."""
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return p.returncode, p.stdout, p.stderr
@@ -252,7 +255,7 @@ def run(cmd, timeout=15):
 
 
 def du_bytes(path, timeout=120):
-    """du дорогой, поэтому коллектор зовёт его редко и с ограничением по времени."""
+    """du is expensive, so the collector calls it rarely and with a timeout."""
     if not os.path.exists(path):
         return None
     if not shutil.which("du"):

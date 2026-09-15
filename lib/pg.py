@@ -1,16 +1,16 @@
 """PostgreSQL.
 
-Запросы идут через штатный клиент psql, а не через драйвер: панель принципиально
-обходится стандартной библиотекой Python, и ставить psycopg ради двух десятков
-читающих запросов незачем.
+Queries go through the stock psql client rather than a driver: the dashboard
+deliberately stays on the Python standard library, and pulling in psycopg for
+two dozen read-only queries would not be worth it.
 
-Пароль нигде не хранится. По умолчанию, когда панель работает от root, psql
-запускается от системного пользователя postgres — это обычная для Debian и
-Ubuntu проверка по владельцу процесса. Если так не подходит, в конфигурации
-задаётся строка подключения, а пароль берётся из ~/.pgpass того пользователя,
-от которого запущена панель, — то есть остаётся заботой самого PostgreSQL.
+No password is stored. By default, when the dashboard runs as root, psql is
+launched as the postgres system user — the usual peer authentication on Debian
+and Ubuntu. When that does not fit, a connection string goes into the
+configuration and the password comes from the ~/.pgpass of whoever runs the
+dashboard, which keeps it PostgreSQL's business rather than ours.
 
-Все запросы зашиты в коде. Снаружи SQL не принимается ни в каком виде.
+Every statement is hard-coded here. No SQL is accepted from outside in any form.
 """
 import os
 import shutil
@@ -18,7 +18,7 @@ import time
 
 from .sysinfo import run
 
-SEP = "\x1f"  # разделитель полей: в данных встретиться не может
+SEP = "\x1f"  # field separator: cannot occur in the data itself
 
 
 def _settings(cfg):
@@ -33,11 +33,11 @@ def enabled(cfg):
 
 
 def _command(cfg, sql, dbname=None, timeout=25):
-    """Собирает вызов psql. Возвращает (код, вывод, ошибка)."""
+    """Build the psql invocation. Returns (code, stdout, stderr)."""
     conf = _settings(cfg)
     psql = shutil.which("psql")
     if not psql:
-        return 1, "", "клиент psql не найден"
+        return 1, "", "psql client not found"
     args = [psql, "--no-psqlrc", "--no-align", "--tuples-only",
             "--field-separator", SEP, "--quiet", "-c", sql]
     dsn = conf.get("dsn")
@@ -47,7 +47,7 @@ def _command(cfg, sql, dbname=None, timeout=25):
         args += ["-d", dbname]
     run_as = conf.get("run_as", "postgres")
     if run_as and os.geteuid() == 0:
-        # sudo здесь не нужен: мы уже root, а su не требует пароля
+        # sudo is unnecessary here: we are already root and su asks nothing
         args = ["su", "-s", "/bin/sh", run_as, "-c",
                 " ".join(_quote(a) for a in args)]
     env_note = None
@@ -63,7 +63,7 @@ def _query(cfg, sql, dbname=None, timeout=25):
     code, out, err = _command(cfg, sql, dbname, timeout)
     if code != 0:
         line = [x for x in (err or "").splitlines() if x.strip()]
-        return None, (line[-1][:200] if line else "ошибка запроса к PostgreSQL")
+        return None, (line[-1][:200] if line else "PostgreSQL query failed")
     rows = []
     for raw in out.splitlines():
         if not raw.strip():
@@ -88,7 +88,7 @@ SYSTEM_DBS = {"template0", "template1", "postgres"}
 
 
 def databases(cfg):
-    """Список баз с размером, числом таблиц и активными соединениями."""
+    """Databases with size, table count and active connections."""
     sql = (
         "SELECT d.datname, pg_database_size(d.datname), "
         " pg_get_userbyid(d.datdba), pg_encoding_to_char(d.encoding), "
@@ -117,9 +117,9 @@ def databases(cfg):
             "cache_hit_pct": round(100.0 * hit / (hit + read), 1) if (hit + read) else None,
             "stats_reset": int(r[10]) or None,
             "system": name in SYSTEM_DBS,
-            "tables": None,   # считается отдельным запросом внутри каждой базы
+            "tables": None,   # filled by a separate query inside each database
         })
-    # Число таблиц лежит внутри каждой базы: один общий запрос его не даст.
+    # The table count lives inside each database: one global query cannot get it.
     for db in out:
         if db["system"]:
             continue
@@ -130,7 +130,7 @@ def databases(cfg):
 
 
 def status(cfg):
-    """Общее состояние сервера: соединения, версия, время работы."""
+    """Overall server state: connections, version, uptime."""
     sql = (
         "SELECT current_setting('server_version'), "
         " current_setting('max_connections'), "
@@ -146,7 +146,7 @@ def status(cfg):
         return {}, err
     r = rows[0]
     if len(r) < 9:
-        return {}, "неожиданный ответ сервера"
+        return {}, "unexpected answer from the server"
     return {
         "version": r[0], "max_connections": int(r[1]),
         "connections": int(r[2]), "active": int(r[3]), "idle": int(r[4]),
@@ -156,7 +156,7 @@ def status(cfg):
 
 
 def overview(cfg, dbname):
-    """Из чего складывается размер базы: таблицы, индексы, TOAST."""
+    """What the database size is made of: tables, indexes, TOAST."""
     sql = (
         "SELECT pg_database_size(current_database()), "
         " coalesce(sum(pg_table_size(c.oid)), 0), "
@@ -179,8 +179,8 @@ def overview(cfg, dbname):
 
 
 def tables(cfg, dbname, limit=20):
-    """Крупнейшие таблицы. Число строк — оценка планировщика: точный счёт
-    означал бы полный проход по таблице при каждом обновлении страницы."""
+    """Largest tables. Row counts are planner estimates: an exact count would
+    mean a full scan on every page refresh."""
     sql = (
         "SELECT c.relname, "
         " coalesce(s.n_live_tup, 0), "
@@ -221,8 +221,8 @@ def tables(cfg, dbname, limit=20):
 
 
 def activity(cfg, dbname=None, limit=25):
-    """Соединения и их состояние. Текст запроса намеренно не забираем:
-    в нём могут оказаться данные пользователей, а панели они не нужны."""
+    """Connections and their state. The query text is deliberately left out:
+    it may carry user data, and the dashboard has no use for it."""
     where = "WHERE datname = current_database()" if dbname else ""
     sql = (
         "SELECT pid, coalesce(usename,''), coalesce(datname,''), coalesce(state,''), "
@@ -243,7 +243,7 @@ def activity(cfg, dbname=None, limit=25):
 
 
 def indexes(cfg, dbname, limit=10):
-    """Самые большие индексы: они часто и есть причина роста базы."""
+    """The largest indexes: often the very reason a database grows."""
     sql = (
         "SELECT indexrelname, relname, pg_relation_size(indexrelid), "
         " coalesce(idx_scan, 0) FROM pg_stat_user_indexes "

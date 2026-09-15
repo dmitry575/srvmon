@@ -1,5 +1,8 @@
-"""Слушающие порты. Разбираем /proc/net/*, чтобы не зависеть от формата
-вывода ss и не платить за запуск подпроцесса на каждый запрос."""
+"""Listening ports.
+
+Parsed straight from /proc/net/* so the result does not depend on the output
+format of ss, and so no subprocess is spawned per request.
+"""
 import os
 import socket
 import struct
@@ -19,7 +22,7 @@ def _hex_to_addr(hexaddr, family):
 
 
 def _inode_map():
-    """Сопоставление inode сокета с процессом — чтобы знать, кто держит порт."""
+    """Map socket inodes to processes, to know who holds a port."""
     mapping = {}
     for pid in os.listdir("/proc"):
         if not pid.isdigit():
@@ -71,8 +74,8 @@ def listening(include_udp=True):
             info = inodes.get(f[9], {})
             public = addr in ("0.0.0.0", "::") or not (
                 addr.startswith("127.") or addr == "::1")
-            # UDP на высоком номере без явного адреса — это исходящий сокет
-            # (так работает прокси), а не служба, которая кого-то ждёт.
+            # A high-numbered UDP socket is an outbound one (how proxies work),
+            # not a service waiting for anybody.
             ephemeral = proto.startswith("udp") and port >= 32768
             out.append({
                 "ephemeral": ephemeral,
@@ -81,7 +84,7 @@ def listening(include_udp=True):
                 "cmd": info.get("cmd", ""),
                 "scope": "public" if public else "localhost",
             })
-    # один порт может быть открыт и на v4, и на v6 — сводим в одну строку
+    # A port can be open on both v4 and v6 — fold those into one row
     merged = {}
     for row in out:
         key = (row["port"], row["proto"].rstrip("6"), row["pid"])
@@ -98,7 +101,7 @@ def listening(include_udp=True):
 
 
 def annotate(ports, cfg):
-    """Подписываем порты именами проектов из конфига, чтобы список читался."""
+    """Label ports with project names from the config so the list reads well."""
     labels = {}
     for d in cfg.get("domains", []):
         if d.get("backend_port"):
@@ -109,7 +112,8 @@ def annotate(ports, cfg):
     labels.setdefault(3306, "MySQL")
     labels.setdefault(33060, "MySQL X Protocol")
     labels.setdefault(53, "systemd-resolved")
-    # Своя подпись уходит ключом: язык выбирает тот, кто смотрит страницу.
+    # Our own label travels as a key: the language is chosen by whoever is
+    # looking at the page.
     own_port = None
     try:
         own_port = int(cfg.get("bind_port", 8452))

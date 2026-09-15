@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Что есть на этом сервере.
+"""What this server actually runs.
 
-Показывает найденные домены nginx, службы, порты, базы и каталоги, чтобы
-конфигурацию не пришлось составлять вслепую. Ничего не меняет: обнаруженный
-домен не становится наблюдаемым сам по себе — его нужно добавить осознанно,
-через раздел Settings или правку config.json.
+Lists the nginx server names, services, ports, databases and directories it
+finds, so the configuration does not have to be written blind. It changes
+nothing: a discovered domain does not become monitored by itself — it has to
+be added deliberately, through Settings or by editing config.json.
 
-    python3 tools/discover.py           показать найденное
-    python3 tools/discover.py --json    то же в виде JSON
+    python3 tools/discover.py           show what was found
+    python3 tools/discover.py --json    the same as JSON
 """
 import glob
 import json
@@ -25,13 +25,13 @@ SKIP_NAMES = {"_", "localhost", "default_server", "default"}
 
 
 def nginx_sites():
-    """Имена серверов вместе с журналами и сертификатами из тех же блоков."""
+    """Server names along with the logs and certificates from the same blocks."""
     found = {}
     for d in NGINX_DIRS:
         for path in sorted(glob.glob(os.path.join(d, "*"))):
             if not os.path.isfile(path):
                 continue
-            # Выключенные и отложенные файлы nginx не читает — и мы не будем.
+            # nginx does not read disabled or backup files, and neither do we.
             if path.endswith((".disabled", ".bak", ".save", ".dpkg-dist", "~")):
                 continue
             try:
@@ -69,9 +69,9 @@ def nginx_sites():
 
 
 def app_services():
-    """Службы, похожие на прикладные: systemd-собственные отсеиваем."""
-    # По умолчанию показываем только работающие: перечень всех юнитов системы
-    # состоит в основном из одноразовых задач загрузки и пользы не несёт.
+    """Units that look like applications: systemd's own ones are filtered out."""
+    # Only running units by default: the full list is mostly one-shot boot
+    # tasks and carries no useful information.
     args = ["systemctl", "list-units", "--type=service", "--no-pager",
             "--no-legend", "--plain"]
     if "--all-services" in sys.argv:

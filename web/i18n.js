@@ -1,9 +1,12 @@
-/* Языки интерфейса.
-   Ключ словаря — исходная русская строка, значение — английская. Такой вид
-   выбран намеренно: код остаётся читаемым без словаря под рукой, а забытая
-   строка отображается как есть, а не превращается в «missing.key.42».
-   Тексты предупреждений собираются из шаблона и параметров, которые
-   присылает сервер, поэтому они не зависят от языка машины. */
+/* Interface languages.
+
+   A dictionary key is the original Russian string and the value is the English
+   one. That shape is deliberate: the code stays readable without the dictionary
+   at hand, and a forgotten string shows up as itself instead of turning into
+   "missing.key.42".
+
+   Alert texts are assembled from a template id and parameters sent by the
+   server, so they do not depend on the language the machine speaks. */
 'use strict';
 
 const I18N = {
@@ -11,12 +14,12 @@ const I18N = {
     try {
       const saved = localStorage.getItem('srvmon_lang');
       if (saved === 'ru' || saved === 'en') return saved;
-    } catch (e) { /* приватный режим браузера — просто берём язык системы */ }
+    } catch (e) { /* private browsing — fall back to the system language */ }
     return (navigator.language || 'en').toLowerCase().startsWith('ru') ? 'ru' : 'en';
   })(),
   set(lang) {
     this.lang = lang;
-    try { localStorage.setItem('srvmon_lang', lang); } catch (e) { /* не страшно */ }
+    try { localStorage.setItem('srvmon_lang', lang); } catch (e) { /* not fatal */ }
   },
   locale() { return this.lang === 'ru' ? 'ru-RU' : 'en-GB'; },
 };
@@ -440,8 +443,8 @@ function t(s) {
   return v === undefined ? s : v;
 }
 
-/* Тексты предупреждений. Сервер присылает идентификатор шаблона и параметры,
-   фраза собирается здесь — на языке, который выбрал смотрящий. */
+/* Alert texts. The server sends a template id and parameters; the phrase is
+   assembled here, in the language the viewer picked. */
 const ALERT_TPL = {
   ru: {
     'disk.full': p => `Диск заполнен на ${p.pct}%`,
@@ -491,8 +494,8 @@ const ALERT_TPL = {
   },
 };
 
-/* Причина отказа приходит кодом: текст сервера на своём языке годится
-   для журнала, но не для страницы на другом языке. */
+/* The failure reason arrives as a code: the server's own wording is fine for
+   the journal but not for a page in another language. */
 const REASONS = {
   ru: {
     dns: 'ошибка DNS', refused: 'соединение отклонено', timeout: 'таймаут',
@@ -516,8 +519,8 @@ function reason(p) {
 
 function alertText(a) {
   let key = a.tpl || a.kind;
-  // У записей, сделанных до появления шаблонов, параметров нет —
-  // подставляем то, что есть в самой записи, чтобы строка не осталась пустой.
+  // Rows written before templates existed carry no parameters — fill in what
+  // the row itself has, so the line does not come out empty.
   if (String(key).endsWith('.recovered')) key = 'recovered';
   const params = Object.assign({ subject: a.subject }, a.params || {});
   const fn = (ALERT_TPL[I18N.lang] || ALERT_TPL.en)[key];
@@ -525,12 +528,12 @@ function alertText(a) {
     try {
       const out = fn(params);
       if (out && !out.includes('undefined')) return out;
-    } catch (e) { /* ниже вернём текст сервера */ }
+    } catch (e) { /* server text is returned below */ }
   }
   return a.message || key;
 }
 
-/* Подпись порта приходит ключом: сервер не знает языка смотрящего. */
+/* A port label arrives as a key: the server does not know the viewer's language. */
 const PORT_LABELS = {
   ru: { srvmon: 'Панель мониторинга' },
   en: { srvmon: 'Monitoring dashboard' },
@@ -541,14 +544,31 @@ function portLabel(p) {
   return p.label || '';
 }
 
-/* Отказ при сохранении настроек приходит кодом, текст подбирается здесь. */
+/* The server reports what it saved as codes like "threshold:disk_warning";
+   the page names the change in its own language. */
+const CHANGED_KINDS = {
+  ru: { threshold: 'порог', interval: 'интервал', domain: 'домен', removed: 'убран домен' },
+  en: { threshold: 'threshold', interval: 'interval', domain: 'domain', removed: 'removed domain' },
+};
+
+function changedLabel(code) {
+  const [kind, rest] = String(code).split(':');
+  const word = (CHANGED_KINDS[I18N.lang] || CHANGED_KINDS.en)[kind];
+  return word ? word + ' ' + (rest || '') : String(code);
+}
+
+/* A rejected settings change arrives as a code; the wording is chosen here. */
 const SETTINGS_ERRORS = {
   ru: {
     bad_id: 'Идентификатор: латиница, цифры, дефис',
     bad_domain: 'Некорректное имя домена',
+    bad_credentials: 'Неверный логин или пароль',
+    auth_required: 'Требуется вход',
   },
   en: {
     bad_id: 'Identifier: latin letters, digits, hyphen',
     bad_domain: 'Invalid domain name',
+    bad_credentials: 'Invalid login or password',
+    auth_required: 'Authentication required',
   },
 };
