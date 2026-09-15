@@ -1,0 +1,97 @@
+# Build a release when a version tag is pushed.
+#
+# The tag is the trigger and the source of the version: pushing v1.2.3 produces
+# release 1.2.3. The same checks that guard the main branch run first, so a tag
+# cannot publish something that does not even parse.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  checks:
+    uses: ./.github/workflows/check.yml
+
+  release:
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Version in the tag must match the version in the code
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          CODE=$(python3 -c "import re;print(re.search(r'VERSION = \"([^\"]+)\"', open('lib/__init__.py').read()).group(1))")
+          echo "tag: $TAG, lib/__init__.py: $CODE"
+          if [ "$TAG" != "$CODE" ]; then
+            echo "::error::tag $TAG does not match VERSION $CODE in lib/__init__.py"
+            exit 1
+          fi
+
+      - name: Build the archive
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          NAME="srvmon-$VERSION"
+          mkdir -p "dist/$NAME"
+          # Everything needed to install, and nothing else: no git metadata,
+          # no local state, no caches.
+          rsync -a --exclude='.git' --exclude='dist' --exclude='var' \
+                --exclude='config.json' --exclude='__pycache__' \
+                --exclude='*.pyc' ./ "dist/$NAME/"
+          tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
+          (cd dist && sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
+          ls -la dist/
+
+      - name: Take the notes for this version out of the changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 - "$VERSION" <<'PY' > release-notes.md
+          import re, sys
+          version = sys.argv[1]
+          text = open('CHANGELOG.md', encoding='utf-8').read()
+          # The section runs from its own heading to the next one of the same level
+          match = re.search(r'^##\s+' + re.escape(version) + r'\s*$(.*?)(?=^##\s|\Z)',
+                            text, re.M | re.S)
+          body = match.group(1).strip() if match else ''
+          if not body:
+              body = 'See CHANGELOG.md for details.'
+          print(body)
+          print()
+          print('### Install')
+          print()
+          print('```bash')
+          print('curl -fsSL https://github.com/%s/releases/download/v%s/srvmon-%s.tar.gz'
+                % ('${{ github.repository }}', version, version) + ' -o srvmon.tar.gz')
+          print('tar xzf srvmon.tar.gz && cd srvmon-%s' % version)
+          print('sudo ./install.sh')
+          print('```')
+          print()
+          print('Or clone the repository and run `sudo ./install.sh` there.')
+          PY
+          cat release-notes.md
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          FILES="dist/srvmon-$VERSION.tar.gz dist/srvmon-$VERSION.tar.gz.sha256"
+          # A tag can be moved and pushed again; in that case the release
+          # already exists and has to be updated rather than created.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "release exists, updating it"
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "srvmon $VERSION" --notes-file release-notes.md
+            gh release upload "$GITHUB_REF_NAME" $FILES --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "srvmon $VERSION" \
+              --notes-file release-notes.md \
+              $FILES
+          fi

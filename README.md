@@ -289,6 +289,19 @@ Settings → fill in domain, project directory, nginx logs, certificate path,
 systemd unit, backend port, database → Save. The collector picks up the change
 without a restart. No code changes, which was the point.
 
+## Releases
+
+A release is built by CI from a tag. Pushing `v1.2.3` runs the same checks the
+main branch gets, verifies that the tag matches `VERSION` in `lib/__init__.py`,
+packs an archive without local state, takes the notes for that version out of
+`CHANGELOG.md`, and publishes them together with a SHA-256 sum.
+
+```bash
+# bump VERSION in lib/__init__.py, add a section to CHANGELOG.md, then:
+git tag -a v1.2.3 -m "srvmon 1.2.3"
+git push origin v1.2.3
+```
+
 ## Contributing
 
 Bug reports and patches are welcome. Before opening a pull request, run both
