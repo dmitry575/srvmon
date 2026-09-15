@@ -177,6 +177,25 @@ def evaluate(snapshot, cfg):
                           "Сертификат %s истекает через %d дн." % (name, days),
                           tpl="ssl.expiring", domain=name, days=days))
 
+    pgs = snapshot.get("pg_status") or {}
+    if pgs.get("max_connections"):
+        used, maxc = pgs.get("connections", 0), pgs["max_connections"]
+        warn_at = th.get("pg_conn_warning", int(maxc * 0.7))
+        crit_at = th.get("pg_conn_critical", int(maxc * 0.9))
+        if used >= crit_at:
+            out.append(_a("pg.conn", "postgres", "critical",
+                          "PostgreSQL: %d соединений из %d" % (used, maxc),
+                          tpl="pg.conn", used=used, max=maxc))
+        elif used >= warn_at:
+            out.append(_a("pg.conn", "postgres", "warning",
+                          "PostgreSQL: %d соединений из %d" % (used, maxc),
+                          tpl="pg.conn", used=used, max=maxc))
+    if pgs.get("idle_in_transaction", 0) >= th.get("pg_idle_tx_warning", 3):
+        out.append(_a("pg.idle_tx", "postgres", "warning",
+                      "PostgreSQL: %d соединений застряли в транзакции"
+                      % pgs["idle_in_transaction"],
+                      tpl="pg.idle_tx", count=pgs["idle_in_transaction"]))
+
     for warn in growth_warnings(cfg):
         out.append(warn)
 

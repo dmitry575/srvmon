@@ -17,7 +17,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib import dbs, net, sysinfo  # noqa: E402
+from lib import dbs, net, pg, sysinfo  # noqa: E402
 
 NGINX_DIRS = ["/etc/nginx/sites-enabled", "/etc/nginx/conf.d",
               "/etc/nginx/vhosts", "/usr/local/nginx/conf/conf.d"]
@@ -104,7 +104,8 @@ def app_services():
 
 
 def databases(cfg):
-    out = {"mysql": [], "sqlite_candidates": [], "mysql_error": None}
+    out = {"mysql": [], "postgres": [], "sqlite_candidates": [],
+           "mysql_error": None, "postgres_error": None}
     defaults = cfg.get("mysql_defaults_file", "/etc/mysql/debian.cnf")
     if os.path.exists(defaults):
         rows, err = dbs.mysql_databases(defaults)
@@ -113,6 +114,14 @@ def databases(cfg):
                         for d in rows if not d.get("system")]
     else:
         out["mysql_error"] = "нет файла %s" % defaults
+    if pg.enabled(cfg):
+        rows, err = pg.databases(cfg)
+        out["postgres_error"] = err
+        out["postgres"] = [{"name": d["name"], "size": d["size"],
+                            "tables": d.get("tables"), "system": d.get("system")}
+                           for d in rows]
+    else:
+        out["postgres_error"] = "клиент psql не найден или отключён в конфигурации"
     seen = set()
     for base in ("/var/www", "/srv", "/opt", "/home", "/root"):
         if not os.path.isdir(base):
@@ -192,6 +201,16 @@ def human(data):
                                                 d["tables"], s("таблиц", "tables")))
     else:
         print("  —", db["mysql_error"] or s("не найдено", "none found"))
+    print()
+    print(s("Базы PostgreSQL:", "PostgreSQL databases:"))
+    if db["postgres"]:
+        for d in db["postgres"]:
+            mark = s("  (служебная)", "  (system)") if d.get("system") else ""
+            print("  %-24s %10.1f МБ  %s %s%s" % (
+                d["name"], d["size"] / 1048576, d["tables"] if d["tables"] is not None else "?",
+                s("таблиц", "tables"), mark))
+    else:
+        print("  —", db["postgres_error"] or s("не найдено", "none found"))
     print()
     print(s("Найденные файлы SQLite:", "SQLite files found:"))
     for d in db["sqlite_candidates"][:12]:

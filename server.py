@@ -20,7 +20,7 @@ from socketserver import ThreadingMixIn
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from lib import auth, dbs, net, services, storage, store, sysinfo  # noqa: E402
+from lib import auth, dbs, net, pg, services, storage, store, sysinfo  # noqa: E402
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(BASE, "web")
@@ -130,10 +130,13 @@ def api_overview(q, cfg):
 
     db_list = dbs_latest.get("list", [])
     user_dbs = [d for d in db_list if not d.get("system")]
-    total_mysql = sum(d["size"] for d in db_list
-                      if d["engine"] == "mysql" and d.get("size"))
-    total_sqlite = sum(d["size"] for d in db_list
-                       if d["engine"] == "sqlite" and d.get("size"))
+    def engine_total(engine):
+        return sum(d["size"] for d in db_list
+                   if d["engine"] == engine and d.get("size") and not d.get("system"))
+
+    total_mysql = engine_total("mysql")
+    total_sqlite = engine_total("sqlite")
+    total_pg = engine_total("postgres")
     biggest = max(user_dbs, key=lambda d: d.get("size") or 0) if user_dbs else None
 
     svc_down = [s for s in svcs if s.get("active") not in ("active", "activating")]
@@ -151,12 +154,13 @@ def api_overview(q, cfg):
         },
         "summary_db": {
             "count": len(user_dbs), "mysql_total": total_mysql,
-            "sqlite_total": total_sqlite,
+            "sqlite_total": total_sqlite, "pg_total": total_pg,
             "biggest": {"name": biggest["name"], "size": biggest["size"],
                         "engine": biggest["engine"]} if biggest else None,
             "tables": sum(d.get("tables") or 0 for d in user_dbs),
             "connections": int(dbs_latest.get("mysql_status", {}).get("Threads_connected", 0) or 0),
             "mysql_status": dbs_latest.get("mysql_status", {}),
+            "pg_status": dbs_latest.get("pg_status", {}),
         },
         "services": {"total": len(svcs), "down": len(svc_down),
                      "down_list": [s["name"] for s in svc_down]},
@@ -280,8 +284,13 @@ def api_databases(q, cfg):
             "SELECT MAX(ts) ts FROM db_snapshots WHERE engine=? AND name=?",
             (d["engine"], key))
         d["last_snapshot"] = last["ts"] if last else None
-    return {"databases": lst, "mysql_status": latest.get("mysql_status", {}) if latest else {},
-            "error": latest.get("error") if latest else None, "ts": ts}
+    errors = latest.get("error") if latest else None
+    if isinstance(errors, str):        # прежний вид: только ошибка MySQL
+        errors = {"mysql": errors}
+    return {"databases": lst,
+            "mysql_status": latest.get("mysql_status", {}) if latest else {},
+            "pg_status": latest.get("pg_status", {}) if latest else {},
+            "errors": errors or {}, "ts": ts}
 
 
 def api_database_detail(ident, q, cfg):
@@ -297,7 +306,9 @@ def api_database_detail(ident, q, cfg):
         " FROM db_snapshots WHERE engine=? AND name=? AND ts>? GROUP BY (ts/?) ORDER BY ts",
         (bucket, bucket, entry["engine"], entry["name"], _now() - span, bucket))
     detail = dict(entry)
-    if entry["engine"] == "mysql":
+    if entry["engine"] == "postgres":
+        detail.update(pg.database_detail(cfg, entry["name"], 20))
+    elif entry["engine"] == "mysql":
         tables, err = dbs.mysql_tables(cfg.get("mysql_defaults_file"), entry["name"], 20)
         detail["tables_list"] = tables
         detail["tables_error"] = err

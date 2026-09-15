@@ -133,6 +133,7 @@ async function main() {
   // те страницы, которым не нужны данные. Пустая панель тоже должна
   // открываться, а не падать.
   const sqlite = dbs.databases.find(d => d.engine === 'sqlite');
+  const postgres = dbs.databases.find(d => d.engine === 'postgres' && !d.system);
   const cases = [
     ['Обзор', () => ctx.pages.overview()],
     ['Домены', () => ctx.pages.domains()],
@@ -143,6 +144,8 @@ async function main() {
       () => ctx.pages.database(encodeURIComponent(dbs.databases[0].id))]] : []),
     ...(sqlite ? [['База sqlite',
       () => ctx.pages.database(encodeURIComponent(sqlite.id))]] : []),
+    ...(postgres ? [['База postgres ' + postgres.name,
+      () => ctx.pages.database(encodeURIComponent(postgres.id))]] : []),
     ['Диск', () => ctx.pages.storage()],
     ['Службы', () => ctx.pages.services()],
     ['Процессы', () => ctx.pages.processes()],
@@ -178,6 +181,9 @@ async function main() {
         ? Object.keys(DICT).filter(k => {
           const key = k.trim();
           if (key.length < 3) return false;
+          // Термины вроде TOAST или MySQL в обоих языках пишутся одинаково:
+          // их присутствие на английской странице — норма, а не пропуск.
+          if (DICT[k] === k) return false;
           return exact.has(key) || (key.length >= 24 && text.includes(key));
         }).slice(0, 3)
         : [];

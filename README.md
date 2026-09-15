@@ -36,8 +36,8 @@ srvmon takes the opposite position:
 | **Overview** | CPU, memory, swap, disk, load average, network, uptime, temperature; site summary; database summary; where disk space went; active alerts |
 | **Domains** | Status, HTTP/HTTPS codes, response time, requests and requests/min, 4xx and 5xx, uptime, certificate and domain expiry, backend, port, project size |
 | **Domain page** | Availability over 24 h / 7 d / 30 d, traffic by period, charts of requests, response time and status codes, backend process and unit, certificate, domain registration, recent errors |
-| **Databases** | Every MySQL and SQLite database: size, tables, rows, indexes, connections, weekly growth |
-| **Database page** | Size breakdown, top 20 tables, active connections, size history |
+| **Databases** | Every MySQL, PostgreSQL and SQLite database: size, tables, rows, indexes, connections, weekly growth |
+| **Database page** | Size breakdown (data, indexes, TOAST), top 20 tables, largest indexes, active connections, size history |
 | **Storage** | Filesystems, largest directories with weekly delta, read-only directory browser |
 | **Services** | systemd units: state, enabled, PID, memory, ports, uptime, restart count, journal tail |
 | **Processes** | Top processes by CPU and memory, grouped by runtime, with secrets masked |
@@ -53,12 +53,12 @@ Interface language: **English and Russian**, switchable in the sidebar.
 * Linux with systemd
 * Python 3.8 or newer (no packages needed)
 * nginx — optional, to expose the dashboard and to parse per-site access logs
-* MySQL/MariaDB and/or SQLite — optional, for the database section
+* MySQL/MariaDB, PostgreSQL and/or SQLite — optional, for the database section
 
-PostgreSQL is not supported yet: the tool was built against MySQL and SQLite,
-and shipping an untested backend would contradict the "no invented numbers"
-rule above. The database layer is a single module (`lib/dbs.py`) if you want to
-add it.
+All three engines can be present at once; the list shows them side by side.
+Any of them can be absent — the section simply skips what is not there, and a
+database server that is installed but down is reported as an error rather than
+silently omitted.
 
 ## Install
 
@@ -114,14 +114,44 @@ Pick one:
   nothing honest to read there. If your format does include timing, the parser
   picks up `rt=` and `urt=` automatically.
 * **Databases** — `information_schema` for MySQL (via the system client and
-  `/etc/mysql/debian.cnf`, so no password is stored in the dashboard),
+  `/etc/mysql/debian.cnf`, so no password is stored in the dashboard);
+  `pg_stat_*` and `pg_*_size()` for PostgreSQL (via `psql` running as the
+  `postgres` system user — peer authentication, again no stored password);
   `PRAGMA` and `dbstat` for SQLite, opened read-only and immutable so a live
-  writer is never disturbed.
+  writer is never disturbed. Row counts are planner estimates on both server
+  engines: an exact count would mean a full scan on every page load.
 * **Services** — `systemctl show`.
 * **Ports** — `/proc/net/*` with sockets mapped to processes.
 * **Certificates** — a live TLS handshake on port 443, plus the file on disk,
   so a renewed-but-not-reloaded certificate is visible immediately.
 * **Domain expiry** — a direct WHOIS query on port 43, every 12 hours.
+
+### PostgreSQL specifics
+
+The database page shows what only PostgreSQL can tell you: size split into
+data, indexes and TOAST; dead rows per table; when each table was last
+vacuumed and analyzed; sequential versus index scans; the largest indexes with
+their usage count (an index with zero scans is a candidate for removal); and
+connections by state, including ones stuck idle in transaction.
+
+Connection settings live under `postgres` in `config.json`:
+
+```json
+"postgres": {
+  "enabled": true,
+  "run_as": "postgres",
+  "dsn": ""
+}
+```
+
+`run_as` is the system user `psql` is launched as — the standard Debian/Ubuntu
+peer authentication, which works when the dashboard runs as root. For anything
+else, put a connection string in `dsn`; the password then comes from the
+`~/.pgpass` of the user running the dashboard and is never stored here. Setting
+`enabled` to false skips PostgreSQL entirely.
+
+Alerts cover connection count against `max_connections` and connections stuck
+in `idle in transaction`, with thresholds in Settings.
 
 ## Collection intervals
 
@@ -131,7 +161,7 @@ Pick one:
 | Site health checks | 45 s |
 | nginx log parsing | 60 s |
 | Services, ports, processes | 60 s |
-| Databases | 5 min |
+| Databases (all engines) | 5 min |
 | Directory scan (`du`) | 15 min |
 | Certificates | 1 h |
 | Domain registration (WHOIS) | 12 h |

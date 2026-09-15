@@ -101,13 +101,34 @@ def main():
           dbs_.get("mysql_status", {}).get("version", ""))
     my = [d for d in dbs_["databases"] if d["engine"] == "mysql" and not d.get("system")]
     sq = [d for d in dbs_["databases"] if d["engine"] == "sqlite"]
+    pgs = [d for d in dbs_["databases"] if d["engine"] == "postgres" and not d.get("system")]
     check("  базы mysql найдены", len(my) > 0, ", ".join(d["name"] for d in my))
     check("  базы sqlite найдены", len(sq) > 0, ", ".join(d["name"] for d in sq))
-    for d in (my[:1] + sq[:1]):
+    if dbs_.get("pg_status"):
+        st = dbs_["pg_status"]
+        check("  postgresql отвечает", bool(st.get("version")), st.get("version", ""))
+        check("  базы postgresql найдены", len(pgs) > 0,
+              ", ".join(d["name"] for d in pgs) or "нет пользовательских баз")
+        check("  соединения postgresql", st.get("max_connections", 0) > 0,
+              "%s из %s" % (st.get("connections"), st.get("max_connections")))
+    else:
+        print("  ---  postgresql не настроен, раздел пропущен")
+    for d in (my[:1] + sq[:1] + pgs[:1]):
         code, dd, _ = req("/api/databases/" + d["id"])
-        check("  карточка базы %s" % d["name"], code == 200 and dd.get("size"),
-              "%s таблиц, топ: %s" % (dd.get("tables"),
-                                      (dd.get("tables_list") or [{}])[0].get("name")))
+        top = (dd.get("tables_list") or [{}])[0]
+        check("  карточка базы %s (%s)" % (d["name"], d["engine"]),
+              code == 200 and dd.get("size"),
+              "%s таблиц, топ: %s" % (dd.get("tables"), top.get("name")))
+        if d["engine"] == "postgres":
+            check("    размер разложен на части",
+                  dd.get("table_size") is not None and dd.get("index_size") is not None,
+                  "данные %s, индексы %s, TOAST %s" % (
+                      dd.get("table_size"), dd.get("index_size"), dd.get("toast_size")))
+            check("    видно время уборки таблиц",
+                  any(x.get("last_vacuum") or x.get("last_analyze")
+                      for x in dd.get("tables_list", [])))
+            check("    крупнейшие индексы получены", len(dd.get("indexes", [])) > 0,
+                  ", ".join(i["name"] for i in dd.get("indexes", [])[:2]))
 
     code, st, _ = req("/api/storage")
     check("раздел диска", code == 200 and len(st.get("filesystems", [])) > 0)

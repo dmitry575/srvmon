@@ -33,7 +33,8 @@
   ],
   "extra_services": [
     "nginx.service",
-    "mysql.service"
+    "mysql.service",
+    "postgresql.service"
   ],
   "extra_certs": [],
   "storage_watch": [
@@ -61,7 +62,10 @@
     "http5xx_critical_per_hour": 100,
     "db_growth_warning_pct": 15,
     "mysql_conn_warning": 100,
-    "mysql_conn_critical": 140
+    "mysql_conn_critical": 140,
+    "pg_conn_warning": 21,
+    "pg_conn_critical": 27,
+    "pg_idle_tx_warning": 3
   },
   "intervals": {
     "system": 20,
@@ -86,5 +90,11 @@
     "/var/log",
     "/etc/nginx"
   ],
-  "sensitive_names": []
+  "sensitive_names": [],
+  "postgres": {
+    "enabled": true,
+    "run_as": "postgres",
+    "dsn": "",
+    "_note": "run_as — системный пользователь, от которого запускается psql (обычная для Debian проверка по владельцу процесса; работает, когда панель запущена от root). dsn — строка подключения, если нужен другой способ; пароль берётся из ~/.pgpass и в панели не хранится. | run_as is the system user psql runs as (peer authentication, works when the dashboard runs as root). dsn is a connection string for other setups; the password comes from ~/.pgpass and is never stored here."
+  }
 }

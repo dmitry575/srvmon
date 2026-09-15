@@ -16,7 +16,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lib import alerts, dbs, health, net, nginxlog, services, ssl_check, storage, store
-from lib import whois
+from lib import pg, whois
 from lib import sysinfo
 
 RUN = True
@@ -188,9 +188,12 @@ def task_databases(ctx):
         [(ts, d["engine"], d["name"], d.get("size"), d.get("tables"), d.get("connections"))
          for d in all_dbs if d.get("size") is not None])
     status, _ = dbs.mysql_status(cfg.get("mysql_defaults_file"))
-    store.put_latest("databases", {"list": all_dbs, "mysql_status": status, "error": err})
+    pg_status, _ = pg.status(cfg) if pg.enabled(cfg) else ({}, None)
+    store.put_latest("databases", {"list": all_dbs, "mysql_status": status,
+                                   "pg_status": pg_status, "error": err})
     ctx["databases"] = all_dbs
     ctx["mysql_status"] = status
+    ctx["pg_status"] = pg_status
 
 
 def task_ssl(ctx):
@@ -330,6 +333,8 @@ def _build_snapshot(ctx, cfg):
         "services": ctx.get("services") or store.get_latest("services", [])[0] or [],
         "mysql_status": ctx.get("mysql_status") or
                         (store.get_latest("databases", {})[0] or {}).get("mysql_status", {}),
+        "pg_status": ctx.get("pg_status") or
+                     (store.get_latest("databases", {})[0] or {}).get("pg_status", {}),
     }
 
 

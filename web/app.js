@@ -330,6 +330,8 @@ async function pageOverview() {
       h('div', { class: 'kv' },
         h('dt', {}, t('Баз')), h('dd', {}, sdb.count),
         h('dt', {}, t('MySQL всего')), h('dd', {}, bytes(sdb.mysql_total)),
+        sdb.pg_total ? h('dt', {}, t('PostgreSQL всего')) : null,
+        sdb.pg_total ? h('dd', {}, bytes(sdb.pg_total)) : null,
         h('dt', {}, t('SQLite всего')), h('dd', {}, bytes(sdb.sqlite_total)),
         h('dt', {}, t('Крупнейшая')), h('dd', {}, sdb.biggest
           ? sdb.biggest.name + ' — ' + bytes(sdb.biggest.size) : '—'),
@@ -589,8 +591,13 @@ async function pageDatabases() {
   const list = d.databases || [];
   const user = list.filter(x => !x.system);
   const st = d.mysql_status || {};
-  const mysqlTotal = list.filter(x => x.engine === 'mysql').reduce((a, b) => a + (b.size || 0), 0);
-  const sqliteTotal = list.filter(x => x.engine === 'sqlite').reduce((a, b) => a + (b.size || 0), 0);
+  const pgSt = d.pg_status || {};
+  const total = eng => list.filter(x => x.engine === eng && !x.system)
+    .reduce((a, b) => a + (b.size || 0), 0);
+  const mysqlTotal = total('mysql');
+  const sqliteTotal = total('sqlite');
+  const pgTotal = total('postgres');
+  const hasPg = list.some(x => x.engine === 'postgres');
   const biggest = user.slice().sort((a, b) => (b.size || 0) - (a.size || 0))[0];
 
   const cards = h('div', { class: 'grid g-metrics' },
@@ -605,7 +612,15 @@ async function pageDatabases() {
       hint: t('предел ') + (st.max_connections || '—') + t(' · активных ') + (st.Threads_running || '—')
     }),
     metric(t('Запросов'), num(Number(st.Queries || 0)), { hint: t('с момента запуска MySQL') }),
-    metric(t('MySQL работает'), dur(Number(st.Uptime || 0)), { hint: t('медленных запросов: ') + (st.Slow_queries ?? '—') })
+    metric(t('MySQL работает'), dur(Number(st.Uptime || 0)), { hint: t('медленных запросов: ') + (st.Slow_queries ?? '—') }),
+    hasPg ? metric(t('Соединений PostgreSQL'), (pgSt.connections ?? '—') + '', {
+      level: level(pgSt.connections || 0, (pgSt.max_connections || 30) * 0.7,
+        (pgSt.max_connections || 30) * 0.9),
+      hint: t('предел ') + (pgSt.max_connections ?? '—') + t(' · активных ') + (pgSt.active ?? '—')
+    }) : null,
+    hasPg ? metric(t('PostgreSQL работает'), dur(pgSt.uptime || 0), {
+      hint: t('в транзакции без дела: ') + (pgSt.idle_in_transaction ?? 0)
+    }) : null
   );
 
   const table = h('div', { class: 'card pad0', style: 'margin-top:12px' },
@@ -625,7 +640,8 @@ async function pageDatabases() {
 
   shell(h('div', {},
     head(t('Базы данных'), t('MySQL и SQLite')),
-    d.error ? h('div', { class: 'note' }, 'MySQL: ' + d.error) : null,
+    ...Object.entries(d.errors || {}).filter(([, v]) => v).map(([eng, v]) =>
+      h('div', { class: 'note' }, eng + ': ' + v)),
     cards, table), { title: t('Базы данных') });
 }
 
@@ -633,18 +649,25 @@ async function pageDatabase(id) {
   const d = await api('databases/' + id + '?range=' + state.range);
   if (d.error) { shell(h('div', {}, head(t('База не найдена')), h('div', { class: 'empty' }, d.error))); return; }
   const isMy = d.engine === 'mysql';
+  const isPg = d.engine === 'postgres';
+  const isFile = d.engine === 'sqlite';
   const cards = h('div', { class: 'grid g-metrics' },
     metric(t('Общий размер'), bytes(d.size), { hint: d.engine }),
-    metric(isMy ? t('Данные') : t('Страниц'), isMy ? bytes(d.data_size) : num(d.page_count),
-      { hint: isMy ? t('без индексов') : t('по ') + bytes(d.page_size) }),
-    metric(isMy ? t('Индексы') : t('Файл WAL'), isMy ? bytes(d.index_size) : bytes(d.wal_size || 0),
-      { hint: isMy ? t('вместе с базой') : t('журнал рядом с базой') }),
-    metric(t('Свободно внутри'), bytes(d.free), { hint: t('место, которое вернёт сжатие') }),
+    metric(isFile ? t('Страниц') : t('Данные'),
+      isFile ? num(d.page_count) : bytes(isPg ? d.table_size : d.data_size),
+      { hint: isFile ? t('по ') + bytes(d.page_size) : t('без индексов') }),
+    metric(isFile ? t('Файл WAL') : t('Индексы'),
+      isFile ? bytes(d.wal_size || 0) : bytes(d.index_size),
+      { hint: isFile ? t('журнал рядом с базой') : t('вместе с базой') }),
+    isPg ? metric(t('TOAST'), bytes(d.toast_size), { hint: t('длинные значения вынесены отдельно') })
+      : metric(t('Свободно внутри'), bytes(d.free), { hint: t('место, которое вернёт сжатие') }),
     metric(t('Таблиц'), num(d.tables), {}),
-    metric(t('Соединений'), d.connections ?? (isMy ? 0 : '—'), {
-      hint: isMy ? t('сейчас к этой базе') : t('файловая база, соединений нет')
+    metric(t('Соединений'), d.connections ?? (isFile ? '—' : 0), {
+      hint: isFile ? t('файловая база, соединений нет') : t('сейчас к этой базе')
     }),
-    metric(t('Строк'), d.rows ? num(d.rows) : '—', { hint: isMy ? t('оценка InnoDB') : '' }),
+    metric(t('Строк'), d.rows ? num(d.rows) : '—', {
+      hint: isMy ? t('оценка InnoDB') : isPg ? t('оценка планировщика') : ''
+    }),
     metric(t('Рост за 7 дней'), d.growth_7d === null || d.growth_7d === undefined ? t('мало истории')
       : (d.growth_7d > 0 ? '+' : '') + d.growth_7d + '%',
       { level: (d.growth_7d || 0) > 15 ? 'warn' : 'ok' })
@@ -654,11 +677,24 @@ async function pageDatabase(id) {
   const charts = h('div', { class: 'grid g-2', style: 'margin-top:12px' },
     chartBox(t('Размер базы'), [{ name: t('размер'), points: hist.map(r => [r.ts, r.size]) }],
       { fmt: v => bytes(v, 0) }),
-    isMy ? chartBox(t('Соединения'), [{ name: t('соединений'), points: hist.map(r => [r.ts, r.conns]), color: PALETTE[1] }],
-      { fmt: v => Math.round(v) }) : null
+    isFile ? null : chartBox(t('Соединения'), [{ name: t('соединений'), points: hist.map(r => [r.ts, r.conns]), color: PALETTE[1] }],
+      { fmt: v => Math.round(v) })
   );
 
-  const tcols = isMy ? [
+  const pgCols = [
+    { title: t('Таблица'), val: r => r.name, cls: 'mono' },
+    { title: t('Строк'), num: true, val: r => r.rows, render: r => num(r.rows) },
+    { title: t('Всего'), num: true, val: r => r.total_size, render: r => bytes(r.total_size) },
+    { title: t('Данные'), num: true, val: r => r.table_size, render: r => bytes(r.table_size) },
+    { title: t('Индексы'), num: true, val: r => r.index_size, render: r => bytes(r.index_size) },
+    { title: t('TOAST'), num: true, val: r => r.toast_size, render: r => r.toast_size ? bytes(r.toast_size) : '—' },
+    { title: t('Мёртвых строк'), num: true, val: r => r.dead_rows, render: r => r.dead_rows ? h('span', { style: r.dead_rows > r.rows * 0.2 ? 'color:var(--warn)' : '' }, num(r.dead_rows)) : '0' },
+    { title: t('Уборка'), val: r => r.last_vacuum, render: r => r.last_vacuum ? ago(r.last_vacuum) : t('не было') },
+    { title: t('Анализ'), val: r => r.last_analyze, render: r => r.last_analyze ? ago(r.last_analyze) : t('не было') },
+    { title: t('Проходов'), num: true, val: r => r.seq_scans, render: r => num(r.seq_scans) },
+    { title: t('По индексу'), num: true, val: r => r.index_scans, render: r => num(r.index_scans) },
+  ];
+  const tcols = isPg ? pgCols : isMy ? [
     { title: t('Таблица'), val: r => r.name, cls: 'mono' },
     { title: t('Строк'), num: true, val: r => r.rows, render: r => num(r.rows) },
     { title: t('Всего'), num: true, val: r => r.total_size, render: r => bytes(r.total_size) },
@@ -688,10 +724,19 @@ async function pageDatabase(id) {
       { title: t('Состояние'), val: r => r.state, render: r => r.state || '—' },
     ], d.processlist, 'dbpl')) : null;
 
+  const idxCard = (d.indexes || []).length ? h('div', { class: 'card pad0', style: 'margin-top:12px' },
+    h('h2', { style: 'padding:14px 15px 10px;margin:0' }, t('Крупнейшие индексы')),
+    sortableTable([
+      { title: t('Индекс'), val: r => r.name, cls: 'mono' },
+      { title: t('Таблица'), val: r => r.table, cls: 'mono' },
+      { title: t('Размер'), num: true, val: r => r.size, render: r => bytes(r.size) },
+      { title: t('Обращений'), num: true, val: r => r.scans, render: r => r.scans ? num(r.scans) : h('span', { style: 'color:var(--warn)' }, '0') },
+    ], d.indexes, 'dbidx')) : null;
+
   shell(h('div', {},
     h('div', { class: 'crumbs' }, h('a', { href: '/databases', 'data-nav': '1' }, t('← Базы данных'))),
-    head(d.name, d.engine === 'mysql' ? 'MySQL' : d.path, rangeSwitch(render)),
-    cards, charts, tables, pl), { title: d.name });
+    head(d.name, isMy ? 'MySQL' : isPg ? 'PostgreSQL' : d.path, rangeSwitch(render)),
+    cards, charts, tables, idxCard, pl), { title: d.name });
 }
 
 // ---------- страница: диск ----------

@@ -1,13 +1,17 @@
-"""Базы данных: MySQL и файловые SQLite.
+"""Базы данных: MySQL, PostgreSQL и файловые SQLite.
 
-PostgreSQL на этом сервере нет — работают MySQL 8.0 и набор SQLite-файлов
-у обоих сайтов, поэтому раздел построен вокруг них. Пароль MySQL не хранится
-в панели: используется штатный /etc/mysql/debian.cnf, который читает только root.
+Каждый движок читается своим способом, но наружу отдаёт одинаковый набор
+полей, поэтому страница со списком баз не знает, что под ней.
+
+Пароли панель не хранит нигде: MySQL читается через штатный
+/etc/mysql/debian.cnf, доступный только root, PostgreSQL — через psql от
+системного пользователя postgres, SQLite открывается прямо файлом.
 """
 import os
 import sqlite3
 import time
 
+from . import pg
 from .sysinfo import run
 
 MYSQL = "/usr/bin/mysql"
@@ -181,7 +185,8 @@ def sqlite_info(path, name=None, with_tables=False, limit=20):
 
 
 def collect_all(cfg):
-    """Все базы, объявленные у доменов, плюс все базы MySQL сервера."""
+    """Все базы сервера: MySQL и PostgreSQL целиком, SQLite — те, что
+    объявлены у доменов (найти их иначе, кроме как по конфигурации, нельзя)."""
     out = []
     defaults = cfg.get("mysql_defaults_file", "/etc/mysql/debian.cnf")
     owner = {}
@@ -194,6 +199,12 @@ def collect_all(cfg):
         db["owner"] = owner.get(("mysql", db["name"]))
         db["id"] = "mysql:" + db["name"]
         out.append(db)
+    pg_err = None
+    if pg.enabled(cfg):
+        pg_dbs, pg_err = pg.databases(cfg)
+        for db in pg_dbs:
+            db["owner"] = owner.get(("postgres", db["name"]))
+            out.append(db)
     seen = set()
     for d in cfg.get("domains", []):
         for db in d.get("databases", []):
@@ -207,4 +218,4 @@ def collect_all(cfg):
             info["owner"] = d["id"]
             info["id"] = "sqlite:" + p
             out.append(info)
-    return out, mysql_err
+    return out, {"mysql": mysql_err, "postgres": pg_err}
