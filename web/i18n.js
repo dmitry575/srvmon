@@ -115,6 +115,7 @@ const DICT = {
   'Бэкенд': 'Backend',
   'Бэкендов': 'Backends',
   'В порядке': 'Healthy',
+  'Версия': 'Version',
   'Версия MySQL': 'MySQL version',
   'Войти': 'Sign in',
   'Временных UDP': 'Transient UDP',

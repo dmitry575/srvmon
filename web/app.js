@@ -1184,6 +1184,7 @@ async function pageSettings() {
         }, t('Сохранить интервалы')))),
     h('div', { class: 'card', style: 'margin-top:12px' }, h('h2', {}, t('Где что лежит')),
       h('div', { class: 'kv' },
+        h('dt', {}, t('Версия')), h('dd', {}, 'srvmon ' + (d.version || '—')),
         h('dt', {}, t('Конфигурация')), h('dd', {}, d.config_path),
         h('dt', {}, t('База метрик')), h('dd', {}, d.db_path),
         h('dt', {}, t('Хранение высокого разрешения')), h('dd', {}, (d.retention?.highres_days ?? '?') + t(' дней')),

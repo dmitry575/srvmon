@@ -20,7 +20,7 @@ from socketserver import ThreadingMixIn
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from lib import auth, dbs, net, pg, services, storage, store, sysinfo  # noqa: E402
+from lib import VERSION, auth, dbs, net, pg, services, storage, store, sysinfo  # noqa: E402
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(BASE, "web")
@@ -458,6 +458,7 @@ def api_settings(q, cfg):
         "storage_watch": cfg.get("storage_watch", []),
         "config_path": store.CONFIG_PATH,
         "db_path": store.DB_PATH,
+        "version": VERSION,
     }
 
 
@@ -620,7 +621,7 @@ class Handler(BaseHTTPRequestHandler):
         q = urllib.parse.parse_qs(parsed.query)
 
         if path == "/api/ping":
-            return self._json({"ok": True, "ts": _now()})
+            return self._json({"ok": True, "ts": _now(), "version": VERSION})
         if path == "/api/session":
             user = self._user()
             return self._json({"authenticated": bool(user), "user": user,

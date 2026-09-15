@@ -15,7 +15,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lib import alerts, dbs, health, net, nginxlog, services, ssl_check, storage, store
-from lib import pg, whois
+from lib import VERSION, pg, whois
 from lib import sysinfo
 
 RUN = True
@@ -395,7 +395,8 @@ def main():
     cfg = store.load_config()
     ctx = {"cfg": cfg, "tailers": {}}
     iv = cfg.get("intervals", {})
-    log("collector started, domains monitored: %d" % len(store.domains(cfg)))
+    log("srvmon %s collector started, domains monitored: %d"
+        % (VERSION, len(store.domains(cfg))))
     bootstrap_history(ctx)
 
     tasks = [
