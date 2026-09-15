@@ -1,0 +1,14 @@
+# Личные данные и состояние — в репозиторий не попадают.
+# Local data and state — never committed.
+config.json
+var/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+*.log
+.DS_Store

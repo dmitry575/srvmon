@@ -1,0 +1,90 @@
+{
+  "_note": "Пример конфигурации. install.sh копирует его в config.json. Домен попадает под наблюдение только если перечислен здесь или добавлен через раздел Settings. | Example configuration. install.sh copies it to config.json. A domain is monitored only when listed here or added via the Settings page.",
+  "bind_host": "127.0.0.1",
+  "bind_port": 8452,
+  "domains": [
+    {
+      "id": "example",
+      "domain": "example.com",
+      "title": "Example site",
+      "enabled": false,
+      "project_dir": "/var/www/example",
+      "nginx_conf": [
+        "/etc/nginx/sites-enabled/example"
+      ],
+      "access_log": "/var/log/nginx/example.access.log",
+      "error_log": "/var/log/nginx/example.error.log",
+      "service": "example.service",
+      "backend_port": 8000,
+      "health_path": "/",
+      "ssl_cert": "/etc/letsencrypt/live/example.com/fullchain.pem",
+      "databases": [
+        {
+          "engine": "mysql",
+          "name": "example"
+        },
+        {
+          "engine": "sqlite",
+          "path": "/var/www/example/var/app.sqlite",
+          "name": "app"
+        }
+      ]
+    }
+  ],
+  "extra_services": [
+    "nginx.service",
+    "mysql.service"
+  ],
+  "extra_certs": [],
+  "storage_watch": [
+    "/var/www",
+    "/var/log",
+    "/var/lib/mysql"
+  ],
+  "mysql_defaults_file": "/etc/mysql/debian.cnf",
+  "thresholds": {
+    "disk_warning": 80,
+    "disk_critical": 90,
+    "ram_warning": 85,
+    "ram_critical": 95,
+    "cpu_warning": 85,
+    "cpu_critical": 95,
+    "load_warning": 4.0,
+    "load_critical": 8.0,
+    "ssl_warning_days": 30,
+    "ssl_critical_days": 8,
+    "domain_warning_days": 30,
+    "domain_critical_days": 10,
+    "response_warning_ms": 1500,
+    "response_critical_ms": 5000,
+    "http5xx_warning_per_hour": 20,
+    "http5xx_critical_per_hour": 100,
+    "db_growth_warning_pct": 15,
+    "mysql_conn_warning": 100,
+    "mysql_conn_critical": 140
+  },
+  "intervals": {
+    "system": 20,
+    "domain_health": 45,
+    "nginx_logs": 60,
+    "services": 60,
+    "databases": 300,
+    "ssl": 3600,
+    "disk_scan": 900,
+    "processes": 60,
+    "whois": 43200
+  },
+  "retention": {
+    "highres_days": 7,
+    "hourly_days": 180,
+    "events_days": 365
+  },
+  "browse_roots": [
+    "/var/www",
+    "/srv",
+    "/opt",
+    "/var/log",
+    "/etc/nginx"
+  ],
+  "sensitive_names": []
+}
