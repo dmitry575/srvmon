@@ -1,0 +1,35 @@
+# Быстрая проверка того, что можно проверить без сервера: синтаксис,
+# разбор конфигурации и полнота словаря переводов. Полные проверки
+# (tools/selftest.py и tools/uitest.js) требуют работающей панели и
+# запускаются на самой машине.
+name: check
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+      - name: Python syntax
+        run: python -m compileall -q server.py collector.py lib tools
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: JavaScript syntax
+        run: |
+          node --check web/app.js
+          node --check web/i18n.js
+          node --check tools/uitest.js
+      - name: Shell syntax
+        run: bash -n install.sh
+      - name: Example configuration is valid JSON
+        run: python -c "import json; json.load(open('config.example.json'))"
+      - name: Every interface string has a translation
+        run: python tools/checktranslations.py
