@@ -96,6 +96,16 @@ jobs:
               $FILES
           fi
 
+      - name: Make sure it is published, not a draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A release that stays a draft is invisible to everyone but the
+          # owner, which looks exactly like a release that was never created.
+          gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease=false
+          gh release view "$GITHUB_REF_NAME" --json isDraft,isPrerelease,tagName \
+            --jq '"draft=" + (.isDraft|tostring) + " prerelease=" + (.isPrerelease|tostring)'
+
       - name: The release must actually be there afterwards
         env:
           GH_TOKEN: ${{ github.token }}
