@@ -61,13 +61,14 @@ srvmon исходит из обратного:
 |---|---|
 | [![Домены](docs/screenshots/domains.png)](docs/screenshots/domains.png)<br>**Домены** — состояние, время ответа, запросы, ошибки, сроки сертификата и регистрации | [![Домен](docs/screenshots/domain.png)](docs/screenshots/domain.png)<br>**Карточка сайта** — доступность, трафик, графики, бэкенд, сертификат, регистрация |
 | [![Базы](docs/screenshots/databases.png)](docs/screenshots/databases.png)<br>**Базы данных** — MySQL, PostgreSQL и SQLite в одном списке | [![PostgreSQL](docs/screenshots/database-postgres.png)](docs/screenshots/database-postgres.png)<br>**База PostgreSQL** — данные, индексы и TOAST, мёртвые строки, уборка, крупнейшие индексы |
-| [![Диск](docs/screenshots/storage.png)](docs/screenshots/storage.png)<br>**Диск** — файловые системы, крупнейшие каталоги, просмотр только на чтение | [![Службы](docs/screenshots/services.png)](docs/screenshots/services.png)<br>**Службы** — состояние, память, порты, аптайм, число перезапусков |
-| [![Сертификаты](docs/screenshots/certificates.png)](docs/screenshots/certificates.png)<br>**Сертификаты** — сроки TLS-сертификатов и сроки регистрации самих доменов | [![События](docs/screenshots/events.png)](docs/screenshots/events.png)<br>**События** — что не так сейчас и лента того, что ломалось и восстанавливалось |
-| [![Настройки](docs/screenshots/settings.png)](docs/screenshots/settings.png)<br>**Настройки** — пороги, интервалы и список доменов | [![Телефон](docs/screenshots/mobile.png)](docs/screenshots/mobile.png)<br>**На телефоне** — те же данные в одну колонку |
+| [![Диск](docs/screenshots/storage.png)](docs/screenshots/storage.png)<br>**Диск** — файловые системы, крупнейшие каталоги, просмотр только на чтение | [![Сертификаты](docs/screenshots/certificates.png)](docs/screenshots/certificates.png)<br>**Сертификаты** — сроки TLS-сертификатов и сроки регистрации самих доменов |
+| [![События](docs/screenshots/events.png)](docs/screenshots/events.png)<br>**События** — что не так сейчас и лента того, что ломалось и восстанавливалось | [![Настройки](docs/screenshots/settings.png)](docs/screenshots/settings.png)<br>**Настройки** — пороги, интервалы и список доменов |
+| [![Телефон](docs/screenshots/mobile.png)](docs/screenshots/mobile.png)<br>**На телефоне** — те же данные в одну колонку | |
 
-Разделы «Процессы» и «Порты» намеренно не показаны: даже в демонстрационном
-режиме там видны настоящие командные строки и номера портов всего остального,
-что работает на машине.
+Разделы «Процессы», «Порты» и «Службы» намеренно не показаны: даже в
+демонстрационном режиме там видны настоящие командные строки и номера портов
+всего остального, что работает на машине. Имена подменить можно, числа —
+нет: переписывание цифр в ответе испортило бы размеры и метки времени.
 
 ## Что нужно
 

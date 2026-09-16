@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 BASE = os.environ.get("SRVMON_URL", "http://127.0.0.1:8452")
@@ -138,8 +139,11 @@ def main():
     check("storage section", code == 200 and len(st.get("filesystems", [])) > 0)
     check("  directories measured", len([d for d in st.get("directories", []) if d.get("bytes")]) > 3,
           "%d directories" % len(st.get("directories", [])))
-    code, br, _ = req("/api/browse?path=/root")
-    check("  directory listing", code == 200 and br.get("entries"))
+    # The path comes from the installation itself: hard-coding one would tie
+    # the test to a particular machine and leak its layout into the repository.
+    browse_root = (st.get("allowed_roots") or ["/"])[0]
+    code, br, _ = req("/api/browse?path=" + urllib.parse.quote(browse_root))
+    check("  directory listing", code == 200 and br.get("entries"), browse_root)
     code, br2, _ = req("/api/browse?path=/etc/shadow")
     check("  escaping the allowlist is refused", bool(br2.get("error")))
     code, br3, _ = req("/api/browse?path=/root/../etc")

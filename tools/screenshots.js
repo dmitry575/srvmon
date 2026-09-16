@@ -26,9 +26,10 @@ const OUT = (() => {
 })();
 const DEBUG_PORT = 9222;
 
-/* Processes and Ports are deliberately absent: even in demo mode those pages
-   show real command lines and real port numbers of whatever else runs on the
-   machine, and no substitution makes that safe to publish. */
+/* Processes, Ports and Services are deliberately absent: even in demo mode
+   those pages show real command lines and real port numbers of whatever else
+   runs on the machine. Names can be substituted; numbers cannot, because
+   replacing digits in an answer would also rewrite sizes and timestamps. */
 const SHOTS = [
   { name: 'overview', url: '/', wait: 2500 },
   { name: 'domains', url: '/domains', wait: 1800 },
@@ -36,7 +37,6 @@ const SHOTS = [
   { name: 'databases', url: '/databases', wait: 1800 },
   { name: 'database-postgres', url: null, wait: 2000 },
   { name: 'storage', url: '/storage', wait: 2000 },
-  { name: 'services', url: '/services', wait: 1800 },
   { name: 'certificates', url: '/ssl', wait: 1800 },
   { name: 'events', url: '/alerts', wait: 1800 },
   { name: 'settings', url: '/settings', wait: 1800 },

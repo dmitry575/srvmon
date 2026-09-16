@@ -61,13 +61,14 @@ Interface language: **English and Russian**, switchable in the sidebar.
 |---|---|
 | [![Domains](docs/screenshots/domains.png)](docs/screenshots/domains.png)<br>**Domains** — status, response time, requests, errors, certificate and registration expiry | [![Domain](docs/screenshots/domain.png)](docs/screenshots/domain.png)<br>**One domain** — availability, traffic, charts, backend, certificate, registration |
 | [![Databases](docs/screenshots/databases.png)](docs/screenshots/databases.png)<br>**Databases** — MySQL, PostgreSQL and SQLite side by side | [![PostgreSQL](docs/screenshots/database-postgres.png)](docs/screenshots/database-postgres.png)<br>**A PostgreSQL database** — data, indexes and TOAST, dead rows, vacuum, largest indexes |
-| [![Storage](docs/screenshots/storage.png)](docs/screenshots/storage.png)<br>**Storage** — filesystems, largest directories, read-only browser | [![Services](docs/screenshots/services.png)](docs/screenshots/services.png)<br>**Services** — state, memory, ports, uptime, restart count |
-| [![Certificates](docs/screenshots/certificates.png)](docs/screenshots/certificates.png)<br>**Certificates** — expiry of TLS certificates and of the domains themselves | [![Events](docs/screenshots/events.png)](docs/screenshots/events.png)<br>**Events** — what is wrong now and a timeline of what broke and recovered |
-| [![Settings](docs/screenshots/settings.png)](docs/screenshots/settings.png)<br>**Settings** — thresholds, intervals, and the domain list | [![Mobile](docs/screenshots/mobile.png)](docs/screenshots/mobile.png)<br>**On a phone** — the same data, one column |
+| [![Storage](docs/screenshots/storage.png)](docs/screenshots/storage.png)<br>**Storage** — filesystems, largest directories, read-only browser | [![Certificates](docs/screenshots/certificates.png)](docs/screenshots/certificates.png)<br>**Certificates** — expiry of TLS certificates and of the domains themselves |
+| [![Events](docs/screenshots/events.png)](docs/screenshots/events.png)<br>**Events** — what is wrong now and a timeline of what broke and recovered | [![Settings](docs/screenshots/settings.png)](docs/screenshots/settings.png)<br>**Settings** — thresholds, intervals, and the domain list |
+| [![Mobile](docs/screenshots/mobile.png)](docs/screenshots/mobile.png)<br>**On a phone** — the same data, one column | |
 
-The Processes and Ports pages are intentionally not shown: even with demo mode
-on they display real command lines and port numbers of everything else running
-on the machine.
+The Processes, Ports and Services pages are intentionally not shown: even with
+demo mode on they display real command lines and port numbers of everything
+else running on the machine. Names can be substituted; numbers cannot, since
+rewriting digits in an answer would also corrupt sizes and timestamps.
 
 ## Requirements
 
