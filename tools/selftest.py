@@ -71,7 +71,9 @@ def main():
           str(sysd.get("load", {}).get("load1")))
     check("network", sysd.get("network", {}).get("rx_total", 0) > 0)
     check("uptime", sysd.get("uptime", 0) > 0, "%d h" % (sysd.get("uptime", 0) / 3600))
-    check("domain list in the overview", len(ov.get("domains", [])) == 2,
+    # How many domains there are depends on the installation; what matters is
+    # that the overview and the domains section agree and that each is alive.
+    check("domain list in the overview", len(ov.get("domains", [])) >= 1,
           "%d" % len(ov.get("domains", [])))
     for d in ov.get("domains", []):
         check("  domain %s" % d["domain"], d.get("state") in ("ok", "warning", "down"),
@@ -83,7 +85,9 @@ def main():
         check("  size of %s" % d["domain"], (d.get("disk") or 0) > 0, "%s bytes" % d.get("disk"))
 
     code, doms, _ = req("/api/domains")
-    check("domains section", code == 200 and len(doms.get("domains", [])) == 2)
+    check("domains section", code == 200
+          and len(doms.get("domains", [])) >= len(ov.get("domains", [])),
+          "%d domains" % len(doms.get("domains", [])))
     for d in doms["domains"]:
         code, dd, _ = req("/api/domains/" + d["id"])
         check("domain page %s" % d["domain"], code == 200 and dd.get("health"))
@@ -169,7 +173,7 @@ def main():
 
     code, ss_, _ = req("/api/ssl")
     certs = ss_.get("certificates", [])
-    check("certificates section", code == 200 and len(certs) >= 2, "%d" % len(certs))
+    check("certificates section", code == 200 and len(certs) >= 1, "%d" % len(certs))
     check("  the IP certificate is monitored",
           any(c.get("extra") for c in certs),
           next((c["domain"] for c in certs if c.get("extra")), "not found"))

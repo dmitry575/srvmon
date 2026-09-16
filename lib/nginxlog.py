@@ -72,8 +72,12 @@ class Tailer:
         elif inode == st.st_ino and offset is not None and offset > st.st_size:
             start = 0  # file was truncated
         elif inode is None:
-            # First run: do not grind through gigabytes of history, take the tail
-            start = max(0, st.st_size - 512 * 1024)
+            # First sight of this file: remember where it ends and return
+            # nothing. Counting the existing tail as "just arrived" would put a
+            # whole day of requests into a single minute of the chart. Real
+            # history is rebuilt separately, spread over its own timestamps.
+            self._save(st.st_ino, st.st_size)
+            return []
         if st.st_size - start > max_bytes:
             start = st.st_size - max_bytes
         lines = []

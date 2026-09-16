@@ -249,16 +249,22 @@ def task_whois(ctx):
     previous, prev_ts = store.get_latest("whois", {})
     previous = previous or {}
     # Restarting the unit runs this task again. The registry is shielded from
-    # that here: if the previous answer is still fresh, we do not ask again.
+    # that here: a domain whose previous answer is still fresh is skipped.
+    # The check is per domain, so a site added a minute ago is looked up right
+    # away instead of waiting out the interval of the others.
     interval = cfg.get("intervals", {}).get("whois", 43200)
-    if previous and prev_ts and (time.time() - prev_ts) < interval * 0.9:
-        ctx["whois"] = previous
-        return
+    fresh_until = time.time() - interval * 0.9
     out = {}
     doms = store.domains(cfg)
-    for i, dom in enumerate(doms):
-        if i:
+    asked = 0
+    for dom in doms:
+        known = previous.get(dom["id"])
+        if known and (known.get("checked") or prev_ts or 0) > fresh_until:
+            out[dom["id"]] = known
+            continue
+        if asked:
             time.sleep(3)
+        asked += 1
         info = whois.lookup(dom["domain"], th)
         old = previous.get(dom["id"])
         if info.get("error") and old and old.get("paid_till"):
@@ -363,17 +369,28 @@ def task_rollup(ctx):
     store.write("DELETE FROM sessions WHERE expires < ?", (now,))
 
 
-def bootstrap_history(ctx):
-    """Once, on first run, rebuild traffic history from the logs already on
-    disk — otherwise the charts would stay blank for a day."""
+def bootstrap_history(ctx, only=None):
+    """Rebuild traffic history from the logs already on disk.
+
+    Runs on first start, and again for any domain added later: without it a
+    site added today would show empty charts until tomorrow, even though its
+    log has been filling up all along.
+    """
     cfg = ctx["cfg"]
-    have = store.one("SELECT COUNT(*) n FROM domain_traffic")
-    if have and have["n"] > 0:
-        return
     since = int(time.time()) - 2 * 86400
     for dom in store.domains(cfg):
+        if only is not None and dom["id"] not in only:
+            continue
         path = dom.get("access_log")
         if not path:
+            continue
+        # "Already has history" means points older than an hour, not merely
+        # a row: a site added minutes ago has rows from the ongoing collection
+        # and would otherwise never get its past filled in.
+        have = store.one(
+            "SELECT COUNT(*) n FROM domain_traffic WHERE domain=? AND ts < ?",
+            (dom["domain"], int(time.time()) - 3600))
+        if have and have["n"] > 0:
             continue
         lines = nginxlog.scan_history(path, since, max_bytes=30 << 20)
         buckets = nginxlog.bucket_history(lines, bucket_sec=300, since=since)
@@ -415,6 +432,9 @@ def main():
     sysinfo.cpu_percent()  # the first sample only establishes a baseline
     sysinfo.network()
     sysinfo.processes(limit=1)
+    known_domains = {d["id"] for d in store.domains(cfg)}
+    # Tasks that must not wait out their interval when a site is added
+    catch_up = {"ssl", "whois", "disk", "domain_health", "nginx_logs", "services"}
 
     while RUN:
         now = time.time()
@@ -430,6 +450,21 @@ def main():
             if fresh != ctx["cfg"]:
                 ctx["cfg"] = fresh
                 log("configuration reloaded")
+                current = {d["id"] for d in store.domains(fresh)}
+                added = current - known_domains
+                known_domains = current
+                if added:
+                    # A newly added site should not look empty until the slow
+                    # tasks come round: its log is read and its certificate,
+                    # registration and size are collected right away.
+                    log("new domains: %s — collecting now" % ", ".join(sorted(added)))
+                    try:
+                        bootstrap_history(ctx, only=added)
+                    except Exception as exc:
+                        log("history for new domains failed: %s" % exc)
+                    for task in tasks:
+                        if task.name in catch_up:
+                            task.next_run = 0
         except (OSError, ValueError):
             pass
         time.sleep(2)
