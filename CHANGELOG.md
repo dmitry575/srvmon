@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.0.1
+
+Fixes found by adding a third site to a dashboard that was already running.
+Nobody had done that before: every earlier domain was there from the first
+start, so the paths that handle a late arrival had never been exercised.
+
+### Fixed
+
+* **The first chart point was a lie.** On its first encounter with an access
+  log the parser read half a megabyte of tail and counted it as fresh traffic,
+  so a whole day of requests landed in a single minute of the chart. It now
+  records where the file ends and returns nothing; the past is rebuilt
+  separately and spread across its own timestamps. On the site that exposed
+  this, one false spike of 2072 requests became 219 truthful points.
+* **A site added later never got its history.** Rebuilding from logs happened
+  only while the traffic table was empty as a whole, and by then the ongoing
+  collection had already written a row. The check is now per domain and looks
+  for points older than an hour.
+* **A new site looked half empty for hours.** Certificates refresh hourly,
+  WHOIS every twelve hours, directory sizes every fifteen minutes — a domain
+  added a minute ago had to wait all of that out. The collector now notices
+  domains appearing in the configuration and runs those tasks at once. The
+  WHOIS freshness check became per domain for the same reason, so one recent
+  answer no longer holds back a lookup for a different domain.
+* The self-test no longer assumes a fixed number of domains.
+
 ## 1.0.0
 
 First public release.
