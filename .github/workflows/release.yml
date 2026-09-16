@@ -95,3 +95,18 @@ jobs:
               --notes-file release-notes.md \
               $FILES
           fi
+
+      - name: The release must actually be there afterwards
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A release can vanish after the fact: deleting a tag makes GitHub
+          # clean up in the background, and that cleanup has been seen to
+          # remove a release recreated moments later. Checking here turns a
+          # silent disappearance into a failed job.
+          sleep 20
+          if ! gh release view "$GITHUB_REF_NAME" --json tagName,assets \
+               --jq '.tagName + " with " + (.assets | length | tostring) + " files"'; then
+            echo "::error::release $GITHUB_REF_NAME is not there after publishing"
+            exit 1
+          fi
