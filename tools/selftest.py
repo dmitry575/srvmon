@@ -129,9 +129,16 @@ def main():
                   dd.get("table_size") is not None and dd.get("index_size") is not None,
                   "data %s, indexes %s, TOAST %s" % (
                       dd.get("table_size"), dd.get("index_size"), dd.get("toast_size")))
-            check("    vacuum and analyze times are visible",
-                  any(x.get("last_vacuum") or x.get("last_analyze")
-                      for x in dd.get("tables_list", [])))
+            # An empty value is a valid state: PostgreSQL loses these counters
+            # when the server restarts uncleanly, and a fresh table has never
+            # been vacuumed. What matters is that the fields are reported.
+            tables = dd.get("tables_list", [])
+            check("    vacuum and analyze fields are reported",
+                  bool(tables) and all("last_vacuum" in x and "last_analyze" in x
+                                       for x in tables),
+                  "with a time: %d of %d" % (
+                      sum(1 for x in tables if x.get("last_vacuum") or x.get("last_analyze")),
+                      len(tables)))
             check("    largest indexes retrieved", len(dd.get("indexes", [])) > 0,
                   ", ".join(i["name"] for i in dd.get("indexes", [])[:2]))
 

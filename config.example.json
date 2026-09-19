@@ -104,5 +104,11 @@
       "example.com": "site-a.example",
       "203.0.113.10": "1.1.1.1"
     }
+  },
+  "tls": {
+    "_note": "Панель сама умеет HTTPS: на маленькой VDS обратного прокси может не быть. Слушать внешний адрес без TLS она откажется. | The dashboard speaks HTTPS itself: a small VPS may have no reverse proxy. It refuses to listen on a public address without TLS.",
+    "enabled": false,
+    "cert": "",
+    "key": ""
   }
 }

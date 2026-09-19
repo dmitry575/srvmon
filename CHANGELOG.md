@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.1.0
+
+Installation stopped being the hard part. Before this, getting the dashboard
+onto a fresh VPS meant cloning a repository, setting up nginx, obtaining a
+certificate and only then seeing a page — which is more ceremony than a small
+server deserves.
+
+### Added
+
+* **One-command install.** `curl … | sudo bash` fetches the latest release,
+  creates a user with a generated password, installs both units and prints the
+  address to open. Nothing else to type.
+* **HTTPS without a reverse proxy.** The server can terminate TLS itself, and
+  the installer generates a self-signed certificate issued for the machine's
+  own address, so the browser warns about the issuer rather than the name.
+* **A refusal that matters:** binding to a public address without TLS is now
+  an error rather than an option. A password typed into a page reachable from
+  the internet should not travel in the clear.
+* `--local` for anyone who would rather keep it on `127.0.0.1` and reach it
+  through an SSH tunnel; the port is opened in ufw when it is active.
+* CONTRIBUTING, SECURITY and issue templates; the README now says plainly what
+  the dashboard is not, which saves everyone time.
+
 ## 1.0.1
 
 Fixes found by adding a third site to a dashboard that was already running.

@@ -11,12 +11,13 @@ served from ready snapshots in SQLite and cost single-digit milliseconds.
 import json
 import os
 import re
+import ssl
 import sys
 import time
 import urllib.parse
 from http.cookies import SimpleCookie
+import socket
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from socketserver import ThreadingMixIn
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -771,9 +772,37 @@ class Handler(BaseHTTPRequestHandler):
 class Server(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+    address_family = socket.AF_INET
     # The default backlog is only 5: a browser opens several connections at
     # once on refresh, and some of them would be refused.
     request_queue_size = 64
+
+
+def tls_context(cfg):
+    """TLS is handled here rather than delegated to a reverse proxy.
+
+    On a small VPS there is often no nginx, and asking someone to set one up
+    before they can look at their own server is the kind of step that makes a
+    tool go unused. Without TLS a password typed into a page reachable from the
+    internet would travel in the clear, so listening on a public address
+    without a certificate is refused outright.
+    """
+    conf = cfg.get("tls") or {}
+    if not conf.get("enabled"):
+        return None
+    cert, key = conf.get("cert"), conf.get("key")
+    if not cert or not os.path.exists(cert):
+        print("ERROR: TLS is enabled but the certificate is missing: %s" % cert,
+              flush=True)
+        return None
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    try:
+        ctx.load_cert_chain(cert, key or cert)
+    except (ssl.SSLError, OSError) as exc:
+        print("ERROR: cannot load the certificate: %s" % exc, flush=True)
+        return None
+    return ctx
 
 
 def main():
@@ -784,15 +813,26 @@ def main():
     if not auth.load_users():
         print("WARNING: no users yet. Create one: python3 tools/passwd.py <login>",
               flush=True)
+    ctx = tls_context(cfg)
+    public = host not in ("127.0.0.1", "localhost", "::1")
+    if public and not ctx:
+        print("ERROR: refusing to listen on %s without TLS — a password would "
+              "travel in the clear. Either bind to 127.0.0.1 and put a proxy in "
+              "front, or enable tls in config.json." % host, flush=True)
+        return 1
     srv = Server((host, port), Handler)
-    print("dashboard listening on http://%s:%d" % (host, port), flush=True)
+    if ctx:
+        srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+    scheme = "https" if ctx else "http"
+    print("dashboard listening on %s://%s:%d" % (scheme, host, port), flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         srv.server_close()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)
