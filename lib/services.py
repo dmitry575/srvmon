@@ -16,7 +16,7 @@ def _num(val):
     return int(val) if val.isdigit() else None
 
 
-PROPS = ["Id", "Description", "ActiveState", "SubState", "UnitFileState",
+PROPS = ["Id", "Description", "ActiveState", "SubState", "UnitFileState", "Type",
          "MainPID", "ExecMainStartTimestampMonotonic", "NRestarts",
          "MemoryCurrent", "CPUUsageNSec", "Result", "StatusText"]
 
@@ -51,10 +51,16 @@ def unit_status(name):
         "started": started,
         "uptime": int(time.time() - started) if started else None,
         "result": data.get("Result", ""),
+        "type": data.get("Type", ""),
         "status_text": data.get("StatusText", "")[:200],
         "cpu_nsec": _num(data.get("CPUUsageNSec")) or None,
     }
-    res["ok"] = res["active"] == "active"
+    # A oneshot unit run by a timer is "inactive" between runs by design;
+    # only a failed last run is a problem. Treating it like a daemon would
+    # raise an alarm after every successful run.
+    res["oneshot"] = res["type"] == "oneshot"
+    res["ok"] = res["active"] == "active" or (
+        res["oneshot"] and res["active"] == "inactive" and res["result"] in ("success", ""))
     return res
 
 

@@ -107,6 +107,7 @@ const DICT = {
   'Баз под наблюдением': 'Databases monitored',
   'База': 'Database',
   'База MySQL (необязательно)': 'MySQL database (optional)',
+  'База PostgreSQL (необязательно)': 'PostgreSQL database (optional)',
   'База метрик': 'Metrics database',
   'База не найдена': 'Database not found',
   'Базы данных': 'Databases',

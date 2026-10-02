@@ -557,8 +557,11 @@ def settings_save(body, cfg):
             clean_dbs = []
             for db in d["databases"][:20]:
                 eng = db.get("engine")
-                if eng == "mysql" and re.fullmatch(r"[A-Za-z0-9_]{1,64}", str(db.get("name", ""))):
-                    clean_dbs.append({"engine": "mysql", "name": db["name"]})
+                # PostgreSQL was added after this form and used to be dropped
+                # here without a word — the domain saved, its database did not.
+                if eng in ("mysql", "postgres") and re.fullmatch(
+                        r"[A-Za-z0-9_]{1,63}", str(db.get("name", ""))):
+                    clean_dbs.append({"engine": eng, "name": db["name"]})
                 elif eng == "sqlite" and _clean_path(db.get("path")):
                     clean_dbs.append({"engine": "sqlite", "path": _clean_path(db["path"]),
                                       "name": str(db.get("name") or "sqlite")[:60]})

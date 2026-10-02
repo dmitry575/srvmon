@@ -1109,12 +1109,15 @@ async function pageSettings() {
     field('backend_port', t('Порт бэкенда'), '8190', 'number'),
     field('health_path', t('Путь проверки'), '/'),
     field('mysql_db', t('База MySQL (необязательно)'), 'site3'),
+    field('pg_db', t('База PostgreSQL (необязательно)'), 'site3'),
     field('sqlite_path', t('Файл SQLite (необязательно)'), '/root/site3/var/app.sqlite'));
 
   function fillForm(dom) {
     ['id', 'domain', 'title', 'project_dir', 'access_log', 'error_log', 'ssl_cert',
       'service', 'backend_port', 'health_path'].forEach(k => { f[k].value = dom[k] ?? ''; });
     const my = (dom.databases || []).find(x => x.engine === 'mysql');
+    const pgdb = (dom.databases || []).find(x => x.engine === 'postgres');
+    f.pg_db.value = pgdb ? pgdb.name : '';
     const sq = (dom.databases || []).find(x => x.engine === 'sqlite');
     f.mysql_db.value = my ? my.name : '';
     f.sqlite_path.value = sq ? sq.path : '';
@@ -1123,6 +1126,7 @@ async function pageSettings() {
   function collectForm(enabled) {
     const databases = [];
     if (f.mysql_db.value.trim()) databases.push({ engine: 'mysql', name: f.mysql_db.value.trim() });
+    if (f.pg_db.value.trim()) databases.push({ engine: 'postgres', name: f.pg_db.value.trim() });
     if (f.sqlite_path.value.trim()) databases.push({
       engine: 'sqlite', path: f.sqlite_path.value.trim(),
       name: f.sqlite_path.value.trim().split('/').pop().replace(/\.(sqlite|db)$/, '')

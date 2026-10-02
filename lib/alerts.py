@@ -139,7 +139,7 @@ def evaluate(snapshot, cfg):
                           "Service %s failed (%s)" % (svc["name"], svc.get("result") or "failed"),
                           tpl="service.failed", service=svc["name"],
                           result=svc.get("result") or "failed"))
-        elif svc.get("active") not in ("active", "activating"):
+        elif svc.get("active") not in ("active", "activating") and not svc.get("ok"):
             out.append(_a("service.down", svc["name"], "warning",
                           "Service %s: state %s" % (svc["name"], svc.get("active")),
                           tpl="service.down", service=svc["name"], state=svc.get("active")))
