@@ -312,6 +312,10 @@ const DICT = {
   'Соединений MySQL': 'MySQL connections',
   'Соединений MySQL, внимание': 'MySQL connections, warning',
   'Соединений MySQL, критично': 'MySQL connections, critical',
+  'Соединений PostgreSQL, внимание': 'PostgreSQL connections, warning',
+  'Соединений PostgreSQL, критично': 'PostgreSQL connections, critical',
+  'Простой в транзакции, соединений': 'Idle in transaction, connections',
+  'Простой в транзакции, с': 'Idle in transaction, seconds',
   'Соединения': 'Connections',
   'Состояние': 'Status',
   'Сохранить домен': 'Save domain',
@@ -467,7 +471,9 @@ const ALERT_TPL = {
     'service.down': p => `Служба ${p.service}: состояние ${p.state}`,
     'mysql.conn': p => `MySQL: ${p.used} соединений из ${p.max}`,
     'pg.conn': p => `PostgreSQL: ${p.used} соединений из ${p.max}`,
-    'pg.idle_tx': p => `PostgreSQL: ${p.count} соединений застряли в транзакции`,
+    'pg.idle_tx': p => p.seconds
+      ? `PostgreSQL: ${p.count} соединений простаивают в транзакции дольше ${p.seconds} с (самое долгое ${p.longest} с)`
+      : `PostgreSQL: ${p.count} соединений застряли в транзакции`,
     'db.growth': p => `База ${p.db} выросла на ${p.pct}% за ${p.days} дн.`,
     'recovered': p => `${p.subject}: восстановлено`,
   },
@@ -490,7 +496,9 @@ const ALERT_TPL = {
     'service.down': p => `Service ${p.service}: state ${p.state}`,
     'mysql.conn': p => `MySQL: ${p.used} of ${p.max} connections in use`,
     'pg.conn': p => `PostgreSQL: ${p.used} of ${p.max} connections in use`,
-    'pg.idle_tx': p => `PostgreSQL: ${p.count} connections stuck idle in transaction`,
+    'pg.idle_tx': p => p.seconds
+      ? `PostgreSQL: ${p.count} connections idle in transaction for over ${p.seconds} s (longest ${p.longest} s)`
+      : `PostgreSQL: ${p.count} connections stuck idle in transaction`,
     'db.growth': p => `Database ${p.db} grew by ${p.pct}% in ${p.days} days`,
     'recovered': p => `${p.subject}: recovered`,
   },

@@ -1055,6 +1055,8 @@ async function pageSettings() {
     db_growth_warning_pct: t('Рост базы за неделю (%)'),
     domain_warning_days: t('Домен, предупредить за дней'), domain_critical_days: t('Домен, критично за дней'),
     mysql_conn_warning: t('Соединений MySQL, внимание'), mysql_conn_critical: t('Соединений MySQL, критично'),
+    pg_conn_warning: t('Соединений PostgreSQL, внимание'), pg_conn_critical: t('Соединений PostgreSQL, критично'),
+    pg_idle_tx_warning: t('Простой в транзакции, соединений'), pg_idle_tx_seconds: t('Простой в транзакции, с'),
   };
   const IV_LABELS = {
     system: t('Системные метрики'), domain_health: t('Проверка сайтов'), nginx_logs: t('Разбор журналов'),

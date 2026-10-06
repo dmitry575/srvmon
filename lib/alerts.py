@@ -191,11 +191,19 @@ def evaluate(snapshot, cfg):
             out.append(_a("pg.conn", "postgres", "warning",
                           "PostgreSQL: %d of %d connections in use" % (used, maxc),
                           tpl="pg.conn", used=used, max=maxc))
-    if pgs.get("idle_in_transaction", 0) >= th.get("pg_idle_tx_warning", 3):
+    # Counted only past pg_idle_tx_seconds: a momentary "idle in transaction"
+    # is a transaction between two statements, not one that was forgotten.
+    stuck = pgs.get("idle_in_transaction_long")
+    if stuck is None:                 # answer from an older collector
+        stuck = 0
+    if stuck >= th.get("pg_idle_tx_warning", 1):
         out.append(_a("pg.idle_tx", "postgres", "warning",
-                      "PostgreSQL: %d connections stuck idle in transaction"
-                      % pgs["idle_in_transaction"],
-                      tpl="pg.idle_tx", count=pgs["idle_in_transaction"]))
+                      "PostgreSQL: %d connections idle in transaction for over %d s"
+                      " (longest %d s)" % (stuck, th.get("pg_idle_tx_seconds", 60),
+                                           pgs.get("idle_in_transaction_max_s", 0)),
+                      tpl="pg.idle_tx", count=stuck,
+                      seconds=th.get("pg_idle_tx_seconds", 60),
+                      longest=pgs.get("idle_in_transaction_max_s", 0)))
 
     for warn in growth_warnings(cfg):
         out.append(warn)

@@ -140,18 +140,29 @@ def status(cfg):
         " (SELECT count(*) FROM pg_stat_activity WHERE state = 'idle in transaction'), "
         " extract(epoch from (now() - pg_postmaster_start_time()))::bigint, "
         " current_setting('shared_buffers'), "
-        " (SELECT count(*) FROM pg_stat_activity WHERE wait_event IS NOT NULL)")
+        " (SELECT count(*) FROM pg_stat_activity WHERE wait_event IS NOT NULL), "
+        # Only a transaction left idle for a while is a problem: between two
+        # statements of a normal transaction a connection is "idle in
+        # transaction" for milliseconds, and a snapshot taken at that instant
+        # used to raise an alarm that then stood until the next one.
+        " (SELECT count(*) FROM pg_stat_activity WHERE state = 'idle in transaction'"
+        "    AND now() - state_change > make_interval(secs => %d)), "
+        " coalesce((SELECT max(extract(epoch from now() - state_change))::bigint"
+        "    FROM pg_stat_activity WHERE state = 'idle in transaction'), 0)"
+        % int(((cfg or {}).get("thresholds") or {}).get("pg_idle_tx_seconds", 60)))
     rows, err = _query(cfg, sql, timeout=15)
     if not rows:
         return {}, err
     r = rows[0]
-    if len(r) < 9:
+    if len(r) < 11:
         return {}, "unexpected answer from the server"
     return {
         "version": r[0], "max_connections": int(r[1]),
         "connections": int(r[2]), "active": int(r[3]), "idle": int(r[4]),
         "idle_in_transaction": int(r[5]), "uptime": int(r[6]),
         "shared_buffers": r[7], "waiting": int(r[8]),
+        "idle_in_transaction_long": int(r[9]),
+        "idle_in_transaction_max_s": int(r[10]),
     }, None
 
 

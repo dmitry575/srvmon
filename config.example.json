@@ -65,7 +65,8 @@
     "mysql_conn_critical": 140,
     "pg_conn_warning": 21,
     "pg_conn_critical": 27,
-    "pg_idle_tx_warning": 3
+    "pg_idle_tx_warning": 1,
+    "pg_idle_tx_seconds": 60
   },
   "intervals": {
     "system": 20,
