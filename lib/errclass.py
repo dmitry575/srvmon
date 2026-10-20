@@ -19,6 +19,8 @@ and is labelled as one on the page; a site rule replaces it with certainty.
 """
 import re
 
+from .botverify import family_of as botverify_family
+
 # kind groups categories for the page: protection is the site defending
 # itself, server is a fault, client is the visitor's side, missing is content.
 CATEGORIES = {
@@ -138,11 +140,11 @@ def shape_path(target):
 
 
 LINE_RE = re.compile(
-    r'^\S+ \S+ \S+ \[(?P<ts>[^\]]+)\] "(?:\S+ )?(?P<target>\S*)[^"]*" '
+    r'^(?P<ip>\S+) \S+ \S+ \[(?P<ts>[^\]]+)\] "(?:\S+ )?(?P<target>\S*)[^"]*" '
     r'(?P<status>\d{3}) (?P<bytes>\d+|-) "[^"]*" "(?P<ua>[^"]*)"')
 
 
-def tally(lines, classifier, parse_time=None, bucket=None):
+def tally(lines, classifier, parse_time=None, bucket=None, verifier=None):
     """Count error lines by (status, category, rule, client).
 
     With bucket set, counts are also split by time bucket — used when history
@@ -150,17 +152,35 @@ def tally(lines, classifier, parse_time=None, bucket=None):
     instead of landing in the minute the rebuild happened."""
     counts = {}
     paths = {}
+    matched = []
+    claims = []
     for line in lines:
         m = LINE_RE.match(line)
-        if not m:
+        if not m or m.group("status")[0] not in "45":
             continue
+        matched.append(m)
+        fam = botverify_family(m.group("ua"))
+        if fam:
+            claims.append((m.group("ip"), fam))
+    # A User-Agent is only a claim. Addresses that say they are a search
+    # engine are confirmed by DNS before being counted as one.
+    if verifier is not None and claims:
+        verifier.prepare(claims)
+    for m in matched:
         status = int(m.group("status"))
-        if status < 400:
-            continue
         nb = m.group("bytes")
         nbytes = int(nb) if nb.isdigit() else 0
         target = m.group("target")
         cat, rule, client = classifier.classify(status, nbytes, target, m.group("ua"))
+        if client == "search":
+            fam = botverify_family(m.group("ua"))
+            if fam is None:
+                client = "bot"            # no way to confirm this engine by DNS
+            elif verifier is None:
+                client = "search-unchecked"
+            else:
+                v = verifier.verdict(m.group("ip"))
+                client = {"verified": "search", "fake": "fake-search"}.get(v, "search-unchecked")
         when = 0
         if bucket and parse_time:
             ts = parse_time(m.group("ts"))

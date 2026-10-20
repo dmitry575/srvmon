@@ -25,6 +25,16 @@ const I18N = {
 };
 
 const DICT = {
+  'подтверждено DNS': 'DNS-verified',
+  'Поисковики (DNS подтвердил)': 'Search engines (DNS-verified)',
+  'Выдают себя за поисковик': 'Pretend to be a search engine',
+  'Поисковик, ещё не проверен': 'Search engine, not yet checked',
+  'Защита отказала настоящим поисковым роботам: ': 'Protection turned away genuine search engine robots: ',
+  'Адреса подтверждены DNS — это действительно поисковики, и отказ им бьёт по индексации.': 'The addresses are DNS-verified — these really are search engines, and refusing them hurts indexing.',
+  'Выдавали себя за поисковик и получили отказ: ': 'Pretended to be a search engine and were refused: ',
+  '. DNS этого не подтвердил — защита сработала правильно.': '. DNS did not confirm it — the protection did its job.',
+  '«Браузеры» — это то, как клиент себя назвал: скрейперы из облаков часто представляются браузером. ': '"Browsers" is what the client called itself: scrapers in clouds often pose as a browser. ',
+  'Поисковиком запрос считается, только если DNS это подтвердил: адрес разрешается в домен поисковика (googlebot.com, yandex.ru, search.msn.com…), и это имя указывает обратно на тот же адрес. User-Agent подделывается одной строкой, DNS — нет.': 'A request counts as a search engine only when DNS confirms it: the address resolves to the engine\'s domain (googlebot.com, yandex.ru, search.msn.com…) and that name points back to the same address. A User-Agent is faked in one line; DNS is not.',
   ' запросов': ' requests',
   '404/410, включая сканеры': '404/410, scanners included',
   '5xx: ошибки приложения и бэкенда': '5xx: application and backend errors',

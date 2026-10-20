@@ -359,7 +359,11 @@ def error_breakdown(dom, since):
             "search_hit": sum(g["clients"].get("search", 0) for g in out
                               if g["kind"] == "protection"),
             "browser_hit": sum(g["clients"].get("browser", 0) for g in out
-                               if g["kind"] == "protection")}
+                               if g["kind"] == "protection"),
+            "fake_search_hit": sum(g["clients"].get("fake-search", 0) for g in out
+                                   if g["kind"] == "protection"),
+            "unchecked_search_hit": sum(g["clients"].get("search-unchecked", 0) for g in out
+                                        if g["kind"] == "protection")}
 
 
 def api_errors(q, cfg):

@@ -16,7 +16,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lib import alerts, dbs, health, net, nginxlog, services, ssl_check, storage, store
-from lib import VERSION, errclass, pg, whois
+from lib import VERSION, botverify, errclass, pg, whois
 from lib import sysinfo
 
 RUN = True
@@ -144,6 +144,9 @@ def task_nginx_logs(ctx):
     _collect_error_logs(cfg)
 
 
+_VERIFIER = None
+
+
 def _store_error_breakdown(dom, lines, ts, bucket=None):
     """Errors by status, category and client: what answered and whom it hit.
 
@@ -152,8 +155,11 @@ def _store_error_breakdown(dom, lines, ts, bucket=None):
     storing every distinct URL."""
     if not lines:
         return
+    global _VERIFIER
+    if _VERIFIER is None:
+        _VERIFIER = botverify.Verifier()
     clf = errclass.Classifier(dom.get("error_rules"))
-    counts, paths = errclass.tally(lines, clf, nginxlog.parse_time, bucket)
+    counts, paths = errclass.tally(lines, clf, nginxlog.parse_time, bucket, _VERIFIER)
     if not counts:
         return
     stamp = (lambda when: when + bucket) if bucket else (lambda when: ts)

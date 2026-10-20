@@ -1058,8 +1058,9 @@ const ERR_KIND = {
   missing: ['Нет страницы', ''], client: ['Со стороны клиента', ''],
 };
 const ERR_CLIENTS = [
-  ['browser', 'Браузеры (по UA)'], ['search', 'Поисковики'], ['bot', 'Прочие боты'],
-  ['tool', 'Утилиты'], ['empty', 'Без UA'],
+  ['browser', 'Браузеры (по UA)'], ['search', 'Поисковики (DNS подтвердил)'],
+  ['fake-search', 'Выдают себя за поисковик'], ['search-unchecked', 'Поисковик, ещё не проверен'],
+  ['bot', 'Прочие боты'], ['tool', 'Утилиты'], ['empty', 'Без UA'],
 ];
 
 function errLabel(g) {
@@ -1078,8 +1079,13 @@ function errorBlock(site, opts) {
   const notes = [];
   if (site.search_hit) {
     notes.push(h('div', { class: 'note', style: 'border-color:rgba(242,85,90,.35);background:rgba(242,85,90,.07)' },
-      h('b', {}, t('Защита отказала поисковым роботам: ') + num(site.search_hit) + '. '),
-      t('Проверьте, настоящие ли это Яндекс и Google, — отказ им бьёт по индексации.')));
+      h('b', {}, t('Защита отказала настоящим поисковым роботам: ') + num(site.search_hit) + '. '),
+      t('Адреса подтверждены DNS — это действительно поисковики, и отказ им бьёт по индексации.')));
+  }
+  if (site.fake_search_hit) {
+    notes.push(h('div', { class: 'note' },
+      t('Выдавали себя за поисковик и получили отказ: ') + num(site.fake_search_hit) +
+      t('. DNS этого не подтвердил — защита сработала правильно.')));
   }
   if (site.covered_from && site.covered_from > site.since + 900) {
     notes.push(h('div', { class: 'note' },
@@ -1095,7 +1101,9 @@ function errorBlock(site, opts) {
     },
     { title: t('Всего'), num: true, val: r => r.total, render: r => num(r.total) },
     { title: t('От запросов'), num: true, val: r => r.total, render: r => share(r.total) },
-    ...ERR_CLIENTS.map(([key, title]) => ({
+    // Columns that are empty for the whole site only widen the table
+    ...ERR_CLIENTS.filter(([key]) => key === 'browser' || key === 'search'
+      || rows.some(r => r.clients[key])).map(([key, title]) => ({
       title: t(title), num: true, val: r => r.clients[key] || 0,
       render: r => {
         const n = r.clients[key] || 0;
@@ -1132,13 +1140,14 @@ async function pageErrors() {
       metric(t('Нет страницы'), num(total('missing')), { hint: t('404/410, включая сканеры') }),
       metric(t('Со стороны клиента'), num(total('client')), { hint: t('ушёл, кривой запрос, без входа') }),
       metric(t('Поисковики под защитой'), num(sites.reduce((a, s) => a + (s.search_hit || 0), 0)), {
-        level: sites.some(s => s.search_hit) ? 'bad' : 'ok', hint: t('отказы Яндексу, Google и др.')
+        level: sites.some(s => s.search_hit) ? 'bad' : 'ok', hint: t('подтверждено DNS')
       })),
     ...sites.map(s => errorBlock(s)),
     h('div', { class: 'note', style: 'margin-top:12px' },
       t('Кто ответил — nginx или приложение — определяется по размеру ответа: стандартная страница ошибки nginx короче 300 байт. '),
       t('Точнее это делают правила error_rules у сайта в config.json — они знают, какие пределы стоят на конкретном сайте. '),
-      t('«Браузеры» — это то, как клиент себя назвал: скрейперы из облаков часто представляются браузером.'))
+      t('«Браузеры» — это то, как клиент себя назвал: скрейперы из облаков часто представляются браузером. '),
+      t('Поисковиком запрос считается, только если DNS это подтвердил: адрес разрешается в домен поисковика (googlebot.com, yandex.ru, search.msn.com…), и это имя указывает обратно на тот же адрес. User-Agent подделывается одной строкой, DNS — нет.'))
   ), { title: t('Ошибки') });
 }
 
