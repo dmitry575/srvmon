@@ -212,7 +212,7 @@ window.addEventListener('popstate', () => render());
 
 // ---------- page frame ----------
 const NAV = [
-  ['/', t('Обзор'), '▣'], ['/domains', t('Домены'), '◉'], ['/databases', t('Базы данных'), '▤'],
+  ['/', t('Обзор'), '▣'], ['/domains', t('Домены'), '◉'], ['/errors', t('Ошибки'), '⚠'], ['/databases', t('Базы данных'), '▤'],
   ['/storage', t('Диск'), '▥'], ['/services', t('Службы'), '⚙'], ['/processes', t('Процессы'), '≡'],
   ['/network', t('Порты'), '⇄'], ['/ssl', t('Сертификаты'), '⚿'], ['/alerts', t('События'), '⚑'],
   ['/settings', t('Настройки'), '⚒'],
@@ -581,6 +581,7 @@ async function pageDomain(id) {
     head(d.domain, d.title || '', rangeSwitch(render)),
     regWarn, sslWarn, top,
     h('div', { class: 'grid g-2', style: 'margin-top:12px' }, backend, avail, sslCard, regCard, periods),
+    d.error_breakdown ? errorBlock(Object.assign({}, d.error_breakdown, { id: d.id }), { title: false }) : null,
     charts,
     h('div', { class: 'grid g-2', style: 'margin-top:12px' }, dbCard, errs)
   ), { title: d.domain });
@@ -1038,6 +1039,109 @@ async function pageAlerts() {
   ), { title: t('События') });
 }
 
+// ---------- page: errors by site ----------
+const ERR_CATEGORY = {
+  'protect-nginx': 'Защита: ответил nginx',
+  'protect-app': 'Защита: ответило приложение',
+  'server': 'Сбой приложения',
+  'backend': 'Бэкенд недоступен',
+  'client-gone': 'Клиент не дождался ответа',
+  'bad-request': 'Некорректный запрос',
+  'auth': 'Нужна авторизация',
+  'scanner': 'Сканеры уязвимостей',
+  'missing': 'Нет такой страницы',
+  'gone': 'Удалено навсегда',
+  'other': 'Прочее',
+};
+const ERR_KIND = {
+  protection: ['Защита', 'warn'], server: ['Сбой сервера', 'bad'],
+  missing: ['Нет страницы', ''], client: ['Со стороны клиента', ''],
+};
+const ERR_CLIENTS = [
+  ['browser', 'Браузеры (по UA)'], ['search', 'Поисковики'], ['bot', 'Прочие боты'],
+  ['tool', 'Утилиты'], ['empty', 'Без UA'],
+];
+
+function errLabel(g) {
+  const custom = g.label && (g.label[I18N.lang] || g.label.ru || g.label.en);
+  return custom || t(ERR_CATEGORY[g.category] || ERR_CATEGORY.other);
+}
+
+function errorBlock(site, opts) {
+  opts = opts || {};
+  const req = site.requests || 0;
+  const share = n => req ? (100 * n / req).toFixed(n * 1000 < req ? 2 : 1) + '%' : '—';
+  const kinds = h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px' },
+    ...Object.entries(site.kinds || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) =>
+      h('span', { class: 'pill ' + ((ERR_KIND[k] || [])[1] || '') },
+        t((ERR_KIND[k] || [k])[0]) + ': ' + num(n) + ' · ' + share(n))));
+  const notes = [];
+  if (site.search_hit) {
+    notes.push(h('div', { class: 'note', style: 'border-color:rgba(242,85,90,.35);background:rgba(242,85,90,.07)' },
+      h('b', {}, t('Защита отказала поисковым роботам: ') + num(site.search_hit) + '. '),
+      t('Проверьте, настоящие ли это Яндекс и Google, — отказ им бьёт по индексации.')));
+  }
+  if (site.covered_from && site.covered_from > site.since + 900) {
+    notes.push(h('div', { class: 'note' },
+      t('Разбор ошибок есть с ') + dt(site.covered_from) +
+      t(': более ранних журналов nginx на сервере нет.')));
+  }
+  const rows = site.rows || [];
+  const table = rows.length ? sortableTable([
+    { title: t('Код'), num: true, val: r => r.status, render: r => h('b', {}, r.status) },
+    {
+      title: t('Что это'), val: r => errLabel(r), render: r => h('span', {},
+        h('span', { class: 'st ' + (r.kind === 'server' ? 'bad' : r.kind === 'protection' ? 'warn' : 'off') }, errLabel(r)))
+    },
+    { title: t('Всего'), num: true, val: r => r.total, render: r => num(r.total) },
+    { title: t('От запросов'), num: true, val: r => r.total, render: r => share(r.total) },
+    ...ERR_CLIENTS.map(([key, title]) => ({
+      title: t(title), num: true, val: r => r.clients[key] || 0,
+      render: r => {
+        const n = r.clients[key] || 0;
+        if (!n) return h('span', { class: 'muted' }, '0');
+        const alarm = key === 'search' && r.kind === 'protection';
+        return h('span', { style: alarm ? 'color:var(--bad);font-weight:600' : '' }, num(n));
+      }
+    })),
+    {
+      title: t('Где чаще'), sortable: false, val: () => '', render: r => h('span', {
+        class: 'trunc mono', title: (r.paths || []).map(p => p.path + ' — ' + p.count).join('\n')
+      }, (r.paths && r.paths[0]) ? r.paths[0].path : '—')
+    },
+  ], rows, 'err-' + site.id) : h('div', { class: 'empty' }, t('Ошибок 4xx и 5xx за период нет'));
+  return h('div', { class: 'card pad0', style: 'margin-top:12px' },
+    h('h2', { style: 'padding:14px 15px 10px;margin:0' },
+      opts.title === false ? t('Ошибки по причинам') : h('a', { href: '/domains/' + site.id, 'data-nav': '1' }, site.domain),
+      h('span', { class: 'r' }, num(req) + t(' запросов'))),
+    h('div', { style: 'padding:0 15px' }, kinds, ...notes),
+    table);
+}
+
+async function pageErrors() {
+  const d = await api('errors?range=' + state.range);
+  const sites = d.sites || [];
+  const total = k => sites.reduce((a, s) => a + ((s.kinds || {})[k] || 0), 0);
+  shell(h('div', {},
+    head(t('Ошибки по сайтам'), t('что ответило и кого задело'), rangeSwitch(render)),
+    h('div', { class: 'grid g-metrics' },
+      metric(t('Защита'), num(total('protection')), { hint: t('отказы nginx и приложения') }),
+      metric(t('Сбой сервера'), num(total('server')), {
+        level: total('server') ? 'bad' : 'ok', hint: t('5xx: ошибки приложения и бэкенда')
+      }),
+      metric(t('Нет страницы'), num(total('missing')), { hint: t('404/410, включая сканеры') }),
+      metric(t('Со стороны клиента'), num(total('client')), { hint: t('ушёл, кривой запрос, без входа') }),
+      metric(t('Поисковики под защитой'), num(sites.reduce((a, s) => a + (s.search_hit || 0), 0)), {
+        level: sites.some(s => s.search_hit) ? 'bad' : 'ok', hint: t('отказы Яндексу, Google и др.')
+      })),
+    ...sites.map(s => errorBlock(s)),
+    h('div', { class: 'note', style: 'margin-top:12px' },
+      t('Кто ответил — nginx или приложение — определяется по размеру ответа: стандартная страница ошибки nginx короче 300 байт. '),
+      t('Точнее это делают правила error_rules у сайта в config.json — они знают, какие пределы стоят на конкретном сайте. '),
+      t('«Браузеры» — это то, как клиент себя назвал: скрейперы из облаков часто представляются браузером.'))
+  ), { title: t('Ошибки') });
+}
+
 // ---------- page: settings ----------
 async function pageSettings() {
   const d = await api('settings');
@@ -1259,6 +1363,7 @@ async function render() {
     }
     if (path.startsWith('/domains/')) await pageDomain(decodeURIComponent(path.slice(9)));
     else if (path.startsWith('/databases/')) await pageDatabase(path.slice(11));
+    else if (path === '/errors') await pageErrors();
     else if (path === '/domains') await pageDomains();
     else if (path === '/databases') await pageDatabases();
     else if (path === '/storage') await pageStorage();

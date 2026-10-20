@@ -6,6 +6,7 @@ accumulating. Tasks are spread across intervals — cheap ones run often, costly
 ones rarely. Directory scans and parsing of large logs are deliberately put on
 a long cycle: the dashboard must not become the load it is meant to watch.
 """
+import gzip
 import json
 import os
 import sys
@@ -15,7 +16,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lib import alerts, dbs, health, net, nginxlog, services, ssl_check, storage, store
-from lib import VERSION, pg, whois
+from lib import VERSION, errclass, pg, whois
 from lib import sysinfo
 
 RUN = True
@@ -122,6 +123,7 @@ def task_nginx_logs(ctx):
         tailer = ctx["tailers"].setdefault(path, nginxlog.Tailer(path))
         lines = tailer.read_new()
         agg, errors = nginxlog.aggregate(lines)
+        _store_error_breakdown(dom, lines, now)
         span = cfg["intervals"].get("nginx_logs", 60)
         if agg["requests"]:
             store.write(
@@ -140,6 +142,75 @@ def task_nginx_logs(ctx):
     store.put_latest("nginx_traffic", result)
     ctx["traffic"] = result
     _collect_error_logs(cfg)
+
+
+def _store_error_breakdown(dom, lines, ts, bucket=None):
+    """Errors by status, category and client: what answered and whom it hit.
+
+    Paths are kept as the five most frequent per (status, category) per batch;
+    summed over a day that is a fair picture of where errors land without
+    storing every distinct URL."""
+    if not lines:
+        return
+    clf = errclass.Classifier(dom.get("error_rules"))
+    counts, paths = errclass.tally(lines, clf, nginxlog.parse_time, bucket)
+    if not counts:
+        return
+    stamp = (lambda when: when + bucket) if bucket else (lambda when: ts)
+    store.writemany(
+        "INSERT INTO domain_errors(ts,domain,status,category,rule,client,count)"
+        " VALUES(?,?,?,?,?,?,?)",
+        [(stamp(when), dom["domain"], status, cat, rule, client, n)
+         for (when, status, cat, rule, client), n in counts.items()])
+    prow = []
+    for (when, status, cat, rule), by_path in paths.items():
+        for path, n in sorted(by_path.items(), key=lambda kv: -kv[1])[:5]:
+            prow.append((stamp(when), dom["domain"], status, cat, rule, path, n))
+    store.writemany(
+        "INSERT INTO domain_error_paths(ts,domain,status,category,rule,path,count)"
+        " VALUES(?,?,?,?,?,?,?)", prow)
+
+
+def backfill_errors(ctx):
+    """Rebuild the error breakdown for the last day from the logs on disk.
+
+    The log is streamed line by line: on a busy site a day is close to a
+    hundred megabytes, which the collector must not hold in memory at once."""
+    cfg = ctx["cfg"]
+    since = int(time.time()) - 86400
+    for dom in store.domains(cfg):
+        path = dom.get("access_log")
+        if not path or not os.path.exists(path):
+            continue
+        have = store.one("SELECT COUNT(*) n FROM domain_errors WHERE domain=? AND ts < ?",
+                         (dom["domain"], int(time.time()) - 3600))
+        if have and have["n"] > 0:
+            continue
+        batch, total = [], 0
+        # Yesterday's log may already be compressed: logrotate without
+        # delaycompress leaves only .1.gz, and skipping it cut the day short.
+        for fn in (path + ".1.gz", path + ".1", path):
+            if not os.path.exists(fn):
+                continue
+            opener = gzip.open if fn.endswith(".gz") else open
+            with opener(fn, "rt", encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    m = nginxlog.LINE_RE.match(line)
+                    if not m or m.group("status")[0] not in "45":
+                        continue
+                    t = nginxlog.parse_time(m.group("ts"))
+                    if t is None or t < since:
+                        continue
+                    batch.append(line)
+                    if len(batch) >= 20000:
+                        _store_error_breakdown(dom, batch, 0, bucket=900)
+                        total += len(batch)
+                        batch = []
+        if batch:
+            _store_error_breakdown(dom, batch, 0, bucket=900)
+            total += len(batch)
+        if total:
+            log("error breakdown rebuilt for %s: %d lines" % (dom["domain"], total))
 
 
 def _collect_error_logs(cfg):
@@ -365,6 +436,8 @@ def task_rollup(ctx):
     store.write("DELETE FROM domain_traffic WHERE ts < ?", (now - 31 * 86400,))
     store.write("DELETE FROM service_status WHERE ts < ?", (now - hi,))
     store.write("DELETE FROM recent_errors WHERE ts < ?", (now - 7 * 86400,))
+    store.write("DELETE FROM domain_errors WHERE ts < ?", (now - 31 * 86400,))
+    store.write("DELETE FROM domain_error_paths WHERE ts < ?", (now - 8 * 86400,))
     store.write("DELETE FROM events WHERE ts < ? AND resolved_ts IS NOT NULL", (now - ev,))
     store.write("DELETE FROM sessions WHERE expires < ?", (now,))
 
@@ -415,6 +488,10 @@ def main():
     log("srvmon %s collector started, domains monitored: %d"
         % (VERSION, len(store.domains(cfg))))
     bootstrap_history(ctx)
+    try:
+        backfill_errors(ctx)
+    except Exception as exc:
+        log("error breakdown rebuild failed: %s" % exc)
 
     tasks = [
         Task("system", task_system, iv.get("system", 20)),
@@ -460,6 +537,7 @@ def main():
                     log("new domains: %s — collecting now" % ", ".join(sorted(added)))
                     try:
                         bootstrap_history(ctx, only=added)
+                        backfill_errors(ctx)
                     except Exception as exc:
                         log("history for new domains failed: %s" % exc)
                     for task in tasks:

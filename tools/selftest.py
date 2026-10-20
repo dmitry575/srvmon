@@ -200,6 +200,18 @@ def main():
               "until %s, %s days left, %s" % (reg.get("paid_till_raw") or "—",
                                               reg.get("days_left"), reg.get("registrar")))
 
+    print("\n[ errors by cause ]")
+    code, er, _ = req("/api/errors?range=24h")
+    check("errors section", code == 200 and len(er.get("sites", [])) >= 1,
+          "%d sites" % len(er.get("sites", [])))
+    for site in er.get("sites", []):
+        rows = site.get("rows", [])
+        consistent = all(sum(r["clients"].values()) == r["total"] for r in rows)
+        check("  %s: totals add up across clients" % site["domain"], consistent,
+              ", ".join("%s %s" % (k, v) for k, v in sorted(site.get("kinds", {}).items())) or "no errors")
+        unknown = [r for r in rows if r["kind"] not in ("protection", "server", "missing", "client")]
+        check("  %s: every row has a known kind" % site["domain"], not unknown)
+
     code, al, _ = req("/api/alerts")
     check("events section", code == 200 and "active" in al,
           "%d active, %d in the timeline" % (len(al.get("active", [])), len(al.get("events", []))))

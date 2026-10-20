@@ -62,6 +62,16 @@ CREATE TABLE IF NOT EXISTS whois_info (
   free_date INTEGER, state TEXT, days_left INTEGER, status TEXT, error TEXT);
 CREATE INDEX IF NOT EXISTS ix_whois ON whois_info(domain, ts);
 
+CREATE TABLE IF NOT EXISTS domain_errors (
+  ts INTEGER, domain TEXT, status INTEGER, category TEXT, rule TEXT,
+  client TEXT, count INTEGER);
+CREATE INDEX IF NOT EXISTS ix_derr ON domain_errors(domain, ts);
+
+CREATE TABLE IF NOT EXISTS domain_error_paths (
+  ts INTEGER, domain TEXT, status INTEGER, category TEXT, rule TEXT,
+  path TEXT, count INTEGER);
+CREATE INDEX IF NOT EXISTS ix_derrp ON domain_error_paths(domain, ts);
+
 CREATE TABLE IF NOT EXISTS latest (key TEXT PRIMARY KEY, ts INTEGER, payload TEXT);
 
 CREATE TABLE IF NOT EXISTS logpos (path TEXT PRIMARY KEY, inode INTEGER, offset INTEGER);

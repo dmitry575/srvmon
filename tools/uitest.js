@@ -126,7 +126,7 @@ async function main() {
   eval(src + '\nglobal.I18N = I18N; global.t = t; global.DICT = DICT;\nctx.pages = {overview: pageOverview, domains: pageDomains, domain: pageDomain,'
     + ' databases: pageDatabases, database: pageDatabase, storage: pageStorage,'
     + ' services: pageServices, processes: pageProcesses, network: pageNetwork,'
-    + ' ssl: pageSSL, alerts: pageAlerts, settings: pageSettings};');
+    + ' ssl: pageSSL, alerts: pageAlerts, settings: pageSettings, errors: pageErrors};');
 
   const doms = await (await fetch('/api/domains')).json();
   const dbs = await (await fetch('/api/databases')).json();
@@ -150,6 +150,7 @@ async function main() {
     ['Services', () => ctx.pages.services()],
     ['Processes', () => ctx.pages.processes()],
     ['Ports', () => ctx.pages.network()],
+    ['Errors', () => ctx.pages.errors()],
     ['Certificates', () => ctx.pages.ssl()],
     ['Events', () => ctx.pages.alerts()],
     ['Settings', () => ctx.pages.settings()],

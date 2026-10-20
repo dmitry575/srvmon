@@ -21,7 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from lib import VERSION, auth, dbs, net, pg, services, storage, store, sysinfo  # noqa: E402
+from lib import VERSION, auth, dbs, errclass, net, pg, services, storage, store, sysinfo  # noqa: E402
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(BASE, "web")
@@ -306,8 +306,67 @@ def api_domain_detail(ident, q, cfg):
         },
         "response_series": checks,
         "errors": errors,
+        "error_breakdown": error_breakdown(d, since),
         "note_no_upstream_time": True,
     }
+
+
+def error_breakdown(dom, since):
+    """Errors on one site, by status and by what produced them.
+
+    Each row is one (status, category, rule) with the clients it hit, so a
+    page can show at a glance whether a wall of 403s is a limit catching
+    scrapers or the site turning away people and search engines."""
+    rows = store.rows(
+        "SELECT status, category, rule, client, SUM(count) n FROM domain_errors"
+        " WHERE domain=? AND ts>? GROUP BY status, category, rule, client",
+        (dom["domain"], since))
+    labels = {r.get("id"): {"ru": r.get("label_ru") or r.get("label"),
+                            "en": r.get("label_en") or r.get("label")}
+              for r in dom.get("error_rules") or []}
+    groups = {}
+    for r in rows:
+        key = (r["status"], r["category"], r["rule"] or "")
+        g = groups.setdefault(key, {
+            "status": r["status"], "category": r["category"],
+            "kind": errclass.CATEGORIES.get(r["category"], "client"),
+            "rule": r["rule"] or "", "label": labels.get(r["rule"]) if r["rule"] else None,
+            "total": 0, "clients": {}})
+        g["clients"][r["client"]] = g["clients"].get(r["client"], 0) + r["n"]
+        g["total"] += r["n"]
+    prow = store.rows(
+        "SELECT status, category, rule, path, SUM(count) n FROM domain_error_paths"
+        " WHERE domain=? AND ts>? GROUP BY status, category, rule, path ORDER BY n DESC",
+        (dom["domain"], since))
+    for p in prow:
+        g = groups.get((p["status"], p["category"], p["rule"] or ""))
+        if g is not None:
+            top = g.setdefault("paths", [])
+            if len(top) < 4:
+                top.append({"path": p["path"], "count": p["n"]})
+    out = sorted(groups.values(), key=lambda g: -g["total"])
+    kinds = {}
+    for g in out:
+        kinds[g["kind"]] = kinds.get(g["kind"], 0) + g["total"]
+    requests = traffic_sum(dom["domain"], since).get("requests", 0)
+    first = store.one("SELECT MIN(ts) t FROM domain_errors WHERE domain=? AND ts>?",
+                      (dom["domain"], since))
+    return {"domain": dom["domain"], "id": dom["id"], "rows": out, "kinds": kinds,
+            "requests": requests, "since": since,
+            # The breakdown can only go as far back as the logs on disk; the
+            # page says so instead of passing half a day off as a whole one.
+            "covered_from": (first or {}).get("t"),
+            "search_hit": sum(g["clients"].get("search", 0) for g in out
+                              if g["kind"] == "protection"),
+            "browser_hit": sum(g["clients"].get("browser", 0) for g in out
+                               if g["kind"] == "protection")}
+
+
+def api_errors(q, cfg):
+    span = range_seconds(q.get("range", ["24h"])[0])
+    since = _now() - span
+    return {"range": span, "ts": _now(),
+            "sites": [error_breakdown(d, since) for d in store.domains(cfg)]}
 
 
 def api_databases(q, cfg):
@@ -606,6 +665,7 @@ ROUTES = {
     "storage": api_storage, "services": api_services, "processes": api_processes,
     "network": api_network, "ssl": api_ssl, "alerts": api_alerts,
     "metrics": api_metrics, "settings": api_settings, "browse": api_browse,
+    "errors": api_errors,
 }
 
 
@@ -749,7 +809,7 @@ class Handler(BaseHTTPRequestHandler):
     def _static(self, path):
         if path == "/" or path.startswith("/domains") or path.startswith("/databases") \
                 or path in ("/storage", "/services", "/processes", "/network", "/ssl",
-                            "/alerts", "/settings", "/login"):
+                            "/alerts", "/settings", "/login", "/errors"):
             target = os.path.join(WEB, "index.html")
         else:
             safe = os.path.normpath(path).lstrip("/")
