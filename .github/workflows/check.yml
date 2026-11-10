@@ -13,7 +13,10 @@ on:
 
 jobs:
   syntax:
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest: the oldest Python the project
+    # promises (3.8) is built for 24.04 but not for 26.04, which
+    # ubuntu-latest moved to in November 2026 and failed this job on setup.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
