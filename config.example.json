@@ -69,7 +69,7 @@
     "pg_idle_tx_seconds": 60
   },
   "intervals": {
-    "system": 20,
+    "system": 10,
     "domain_health": 45,
     "nginx_logs": 60,
     "services": 60,

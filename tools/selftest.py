@@ -99,6 +99,8 @@ def main():
         check("  uptime computed", dd.get("availability", {}).get("uptime_24h") is not None,
               "%s%%" % dd.get("availability", {}).get("uptime_24h"))
 
+    code, set_, _ = req("/api/settings")
+    doms_cfg = set_.get("domains", []) if code == 200 else []
     code, dbs_, _ = req("/api/databases")
     check("databases section", code == 200 and len(dbs_.get("databases", [])) > 0,
           "%d databases" % len(dbs_.get("databases", [])))
@@ -108,7 +110,15 @@ def main():
     sq = [d for d in dbs_["databases"] if d["engine"] == "sqlite"]
     pgs = [d for d in dbs_["databases"] if d["engine"] == "postgres" and not d.get("system")]
     check("  mysql databases found", len(my) > 0, ", ".join(d["name"] for d in my))
-    check("  sqlite databases found", len(sq) > 0, ", ".join(d["name"] for d in sq))
+    # SQLite files are known only through the domains that declare them; an
+    # installation whose sites keep their data elsewhere has none, and that
+    # is a valid state, not a failure.
+    declared = sum(1 for dm in doms_cfg for db in dm.get("databases", [])
+                   if db.get("engine") == "sqlite")
+    if declared:
+        check("  sqlite databases found", len(sq) > 0, ", ".join(d["name"] for d in sq))
+    else:
+        print("  ---  no sqlite databases declared, check skipped")
     if dbs_.get("pg_status"):
         st = dbs_["pg_status"]
         check("  postgresql responds", bool(st.get("version")), st.get("version", ""))

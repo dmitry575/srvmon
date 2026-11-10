@@ -25,6 +25,8 @@ const I18N = {
 };
 
 const DICT = {
+  'Память, пик': 'Memory, peak',
+  'CPU, пик': 'CPU, peak',
   'подтверждено DNS': 'DNS-verified',
   'Поисковики (DNS подтвердил)': 'Search engines (DNS-verified)',
   'Выдают себя за поисковик': 'Pretend to be a search engine',

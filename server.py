@@ -99,7 +99,9 @@ def bucket_for(span):
     if span <= 6 * 3600:
         return 300
     if span <= 86400:
-        return 900
+        # 5 minutes rather than 15: a memory spike lasting a few minutes was
+        # averaged into a quarter of an hour and mostly vanished from the day
+        return 300
     if span <= 7 * 86400:
         return 3600
     return 6 * 3600
@@ -373,6 +375,27 @@ def api_errors(q, cfg):
             "sites": [error_breakdown(d, since) for d in store.domains(cfg)]}
 
 
+def api_live(q, cfg):
+    """Current system figures read from /proc on the spot, no database.
+
+    Costs about a millisecond, so the page can poll it every few seconds while
+    the history keeps its own pace in the collector. CPU and network are rates
+    between two readings in this process; on the very first call there is no
+    previous reading yet, and the collector's last value stands in."""
+    cpu = sysinfo.cpu_percent()
+    net = sysinfo.network()
+    mem = sysinfo.meminfo()
+    load = sysinfo.loadavg()
+    if cpu is None or net.get("rx_rate") is None:
+        last = store.get_latest("system", {})[0] or {}
+        if cpu is None:
+            cpu = last.get("cpu")
+        if net.get("rx_rate") is None:
+            net = last.get("network") or net
+    return {"ts": _now(), "cpu": cpu, "memory": mem, "load": load,
+            "network": {"rx_rate": net.get("rx_rate"), "tx_rate": net.get("tx_rate")}}
+
+
 def api_databases(q, cfg):
     latest, ts = store.get_latest("databases", {})
     lst = latest.get("list", []) if latest else []
@@ -543,7 +566,10 @@ def api_metrics(q, cfg):
             " AVG(100.0*ram_used/NULLIF(ram_total,0)) ram_pct,"
             " AVG(100.0*disk_used/NULLIF(disk_total,0)) disk_pct,"
             " AVG(load1) load1, AVG(net_rx) net_rx, AVG(net_tx) net_tx,"
-            " AVG(swap_used) swap_used"
+            " AVG(swap_used) swap_used,"
+            # Peaks next to averages: an average is right for a trend and
+            # wrong for "did memory hit the ceiling at some point"
+            " MAX(cpu) cpu_max, MAX(100.0*ram_used/NULLIF(ram_total,0)) ram_max"
             " FROM sys_metrics WHERE ts>? GROUP BY (ts/?) ORDER BY ts",
             (bucket, bucket, now - span, bucket))
     dom_rows = {}
@@ -669,7 +695,7 @@ ROUTES = {
     "storage": api_storage, "services": api_services, "processes": api_processes,
     "network": api_network, "ssl": api_ssl, "alerts": api_alerts,
     "metrics": api_metrics, "settings": api_settings, "browse": api_browse,
-    "errors": api_errors,
+    "errors": api_errors, "live": api_live,
 }
 
 

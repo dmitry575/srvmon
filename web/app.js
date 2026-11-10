@@ -150,6 +150,7 @@ function rangeSwitch(onChange) {
 function metric(label, value, opts) {
   opts = opts || {};
   const cls = 'card metric' + (opts.level ? ' ' + opts.level : '');
+  // opts.live marks a card the live poll refreshes in place
   const kids = [h('div', { class: 'label' }, label),
     h('div', { class: 'val', html: value })];
   if (opts.bar !== undefined && opts.bar !== null) {
@@ -158,7 +159,7 @@ function metric(label, value, opts) {
     })));
   }
   if (opts.hint) kids.push(h('div', { class: 'hint' }, opts.hint));
-  return h('div', { class: cls }, kids);
+  return h('div', { class: cls, 'data-live': opts.live || null }, kids);
 }
 
 function regPill(days, status, till) {
@@ -283,14 +284,17 @@ async function pageOverview() {
 
   const cards = h('div', { class: 'grid g-metrics' },
     metric(t('Процессор'), pct(sys.cpu), {
+      live: 'cpu',
       level: level(sys.cpu || 0, th.cpu_warning, th.cpu_critical), bar: sys.cpu,
       hint: (sys.os?.cores || '?') + t(' ядра · ') + (sys.os?.cpu_model || '').split(' ').slice(0, 3).join(' ')
     }),
     metric(t('Память'), pct(mem.percent), {
+      live: 'mem',
       level: level(mem.percent || 0, th.ram_warning, th.ram_critical), bar: mem.percent,
       hint: bytes(mem.used) + t(' из ') + bytes(mem.total)
     }),
     metric(t('Подкачка'), pct(mem.swap_percent), {
+      live: 'swap',
       level: level(mem.swap_percent || 0, 60, 95), bar: mem.swap_percent,
       hint: bytes(mem.swap_used) + t(' из ') + bytes(mem.swap_total)
     }),
@@ -299,10 +303,12 @@ async function pageOverview() {
       hint: t('свободно ') + bytes(disk.free)
     }),
     metric(t('Очередь задач'), (load.load1 ?? 0).toFixed(2), {
+      live: 'load',
       level: level(load.load1 || 0, (load.cores || 2) * 2, (load.cores || 2) * 4),
       hint: [load.load5?.toFixed(2), load.load15?.toFixed(2)].join(' · ') + t(' (5/15 мин)')
     }),
     metric(t('Сеть'), bytes(net.rx_rate) + t('<span class="u">/с</span>'), {
+      live: 'net',
       hint: '↑ ' + bytes(net.tx_rate) + t('/с исходящий')
     }),
     metric(t('Аптайм'), dur(sys.uptime).replace(/ (д|ч|мин|с)/, '<span class="u"> $1</span>'), {
@@ -382,6 +388,8 @@ async function pageOverview() {
     chartBox(t('Процессор и память, %'), [
       { name: 'CPU', points: sysSeries.map(r => [r.ts, r.cpu]) },
       { name: t('Память'), points: sysSeries.map(r => [r.ts, r.ram_pct]), color: PALETTE[1] },
+      { name: t('Память, пик'), points: sysSeries.map(r => [r.ts, r.ram_max]), color: PALETTE[4], area: false },
+      { name: t('CPU, пик'), points: sysSeries.map(r => [r.ts, r.cpu_max]), color: PALETTE[3], area: false },
     ], { max: 100, fmt: v => Math.round(v) + '%' }),
     chartBox(t('Запросы к сайтам'), Object.entries(m.domains || {}).map(([name, rows], i) => ({
       name, points: rows.map(r => [r.ts, r.requests]), color: PALETTE[i % PALETTE.length]
@@ -1397,12 +1405,47 @@ async function boot() {
   const s = await fetch('/api/session', { credentials: 'same-origin' }).then(r => r.json());
   if (!s.authenticated) { renderLogin(); return; }
   await render();
-  // Current values refresh every 20 seconds: more often makes no sense,
-  // the collector writes less frequently anyway
+  // The whole page refreshes every 20 seconds; the system cards on the
+  // overview are refreshed in place every 5 seconds from /api/live, which
+  // reads /proc directly, so a memory spike shows up within seconds.
   clearInterval(state.timer);
   state.timer = setInterval(() => {
     if (!document.hidden) render();
   }, 20000);
+  clearInterval(state.liveTimer);
+  state.liveTimer = setInterval(livePoll, 5000);
+}
+
+async function livePoll() {
+  if (document.hidden || location.pathname !== '/' || !document.querySelector('[data-live]')) return;
+  let d;
+  try { d = await api('live'); } catch (e) { return; }
+  const th = state.thresholds || { ram_warning: 85, ram_critical: 95, cpu_warning: 85, cpu_critical: 95 };
+  const mem = d.memory || {}, load = d.load || {}, net = d.network || {};
+  const cores = load.cores || 2;
+  const set = (key, html, bar, lvl, hint) => {
+    const card = document.querySelector('[data-live="' + key + '"]');
+    if (!card) return;
+    const val = card.querySelector('.val');
+    if (val) val.innerHTML = html;
+    const fill = card.querySelector('.bar i');
+    if (fill && bar !== null && bar !== undefined) {
+      fill.style.width = Math.min(100, Math.max(0, bar)) + '%';
+      fill.className = lvl || '';
+    }
+    if (lvl !== undefined) card.className = 'card metric' + (lvl ? ' ' + lvl : '');
+    const h2 = card.querySelector('.hint');
+    if (h2 && hint !== undefined) h2.textContent = hint;
+  };
+  if (d.cpu !== null && d.cpu !== undefined)
+    set('cpu', pct(d.cpu), d.cpu, level(d.cpu, th.cpu_warning, th.cpu_critical));
+  set('mem', pct(mem.percent), mem.percent, level(mem.percent || 0, th.ram_warning, th.ram_critical),
+    bytes(mem.used) + t(' из ') + bytes(mem.total));
+  set('swap', pct(mem.swap_percent), mem.swap_percent, level(mem.swap_percent || 0, 60, 95),
+    bytes(mem.swap_used) + t(' из ') + bytes(mem.swap_total));
+  set('load', (load.load1 ?? 0).toFixed(2), null, level(load.load1 || 0, cores * 2, cores * 4));
+  set('net', bytes(net.rx_rate) + t('<span class="u">/с</span>'), null, undefined,
+    '↑ ' + bytes(net.tx_rate) + t('/с исходящий'));
 }
 
 boot();
