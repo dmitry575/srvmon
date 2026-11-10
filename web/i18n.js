@@ -25,6 +25,7 @@ const I18N = {
 };
 
 const DICT = {
+  'Домен в реестре': 'Registered domain',
   'Память, пик': 'Memory, peak',
   'CPU, пик': 'CPU, peak',
   'подтверждено DNS': 'DNS-verified',

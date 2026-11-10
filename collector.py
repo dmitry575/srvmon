@@ -334,10 +334,21 @@ def task_whois(ctx):
     out = {}
     doms = store.domains(cfg)
     asked = 0
+    by_registrable = {}
     for dom in doms:
+        reg_name = whois.registrable(dom["domain"])
         known = previous.get(dom["id"])
-        if known and (known.get("checked") or prev_ts or 0) > fresh_until:
+        # A cached answer is reused only if it was obtained for the same
+        # registered name: answers from before subdomains were resolved to
+        # their parent hold "not found" and must be asked again.
+        if (known and known.get("registrable") == reg_name
+                and (known.get("checked") or prev_ts or 0) > fresh_until):
             out[dom["id"]] = known
+            continue
+        if reg_name in by_registrable:
+            # lk.example.ru and example.ru share one registration: one query
+            info = dict(by_registrable[reg_name], domain=dom["domain"])
+            out[dom["id"]] = info
             continue
         if asked:
             time.sleep(3)
@@ -358,6 +369,7 @@ def task_whois(ctx):
         info["stale"] = False
         info["checked"] = int(time.time())
         out[dom["id"]] = info
+        by_registrable[reg_name] = info
         store.write(
             "INSERT INTO whois_info(ts,domain,registrar,created,paid_till,free_date,"
             "state,days_left,status,error) VALUES(?,?,?,?,?,?,?,?,?,?)",

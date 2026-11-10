@@ -545,6 +545,8 @@ async function pageDomain(id) {
   const regCard = h('div', { class: 'card' }, h('h2', {}, t('Регистрация домена'),
     reg.stale ? h('span', { class: 'r' }, t('данные прошлой проверки')) : null),
     h('div', { class: 'kv' },
+      reg.registrable && reg.registrable !== d.domain ? h('dt', {}, t('Домен в реестре')) : null,
+      reg.registrable && reg.registrable !== d.domain ? h('dd', {}, reg.registrable) : null,
       h('dt', {}, t('Оплачен до')), h('dd', {}, dt(reg.paid_till)),
       h('dt', {}, t('Осталось')), h('dd', {}, reg.days_left === null || reg.days_left === undefined
         ? '—' : reg.days_left + t(' дн.')),

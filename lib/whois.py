@@ -116,22 +116,49 @@ def _collect(text):
     return fields
 
 
+# Zones where registrations sit one level deeper (example.msk.ru,
+# example.co.uk). Not the full public suffix list, which would mean a
+# dependency or a large file to keep current; these are the common ones.
+MULTI_LABEL_SUFFIXES = {
+    "msk.ru", "spb.ru", "com.ru", "net.ru", "org.ru", "pp.ru", "msk.su", "spb.su",
+    "co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "net.au", "org.au",
+    "co.jp", "co.nz", "co.za", "co.in", "com.br", "com.tr", "com.cn", "com.mx",
+}
+
+
+def registrable(domain):
+    """The name a registry actually holds: lk.example.ru -> example.ru.
+
+    A registry knows only registered domains; asking it about a subdomain gets
+    "not found", and the expiry that matters for lk.example.ru is that of
+    example.ru — when it lapses, the subdomain goes with it."""
+    labels = domain.strip().rstrip(".").lower().split(".")
+    if len(labels) <= 2:
+        return ".".join(labels)
+    keep = 3 if ".".join(labels[-2:]) in MULTI_LABEL_SUFFIXES else 2
+    return ".".join(labels[-keep:])
+
+
 def lookup(domain, thresholds=None):
-    """Return the registration expiry and related facts for a domain."""
+    """Return the registration expiry and related facts for a domain.
+
+    For a subdomain the registered domain above it is looked up; the result
+    names it in "registrable" so the page can say whose expiry it shows."""
     th = thresholds or {}
     warn = th.get("domain_warning_days", 30)
     crit = th.get("domain_critical_days", 10)
-    res = {"domain": domain, "ts": int(time.time()), "error": None,
+    query = registrable(domain)
+    res = {"domain": domain, "registrable": query, "ts": int(time.time()), "error": None,
            "paid_till": None, "created": None, "free_date": None,
            "registrar": None, "state": None, "nservers": [], "whois_server": None}
-    server = _server_for(domain)
+    server = _server_for(query)
     if not server:
         res["error"] = "could not determine the whois server for this zone"
         res["status"] = "unknown"
         return res
     res["whois_server"] = server
     try:
-        text = _query(server, domain)
+        text = _query(server, query)
     except OSError as exc:
         res["error"] = "whois unreachable: %s" % str(exc)[:120]
         res["status"] = "unknown"
