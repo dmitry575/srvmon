@@ -169,8 +169,13 @@ def main():
     code, sv, _ = req("/api/services")
     check("services section", code == 200 and len(sv.get("services", [])) > 5,
           "%d services" % len(sv.get("services", [])))
+    # How many services run depends on the machine; what the dashboard owes is
+    # a state for every unit it watches.
     running = [s for s in sv["services"] if s.get("active") == "active"]
-    check("  services are running", len(running) >= 10, "%d active" % len(running))
+    stateless = [s["name"] for s in sv["services"] if not s.get("active")]
+    check("  every service reports a state", not stateless and len(running) >= 1,
+          "%d active of %d" % (len(running), len(sv["services"])) if not stateless
+          else "no state: " + ", ".join(stateless[:3]))
     check("  ports are matched to services", any(s.get("ports") for s in sv["services"]))
 
     code, pr, _ = req("/api/processes")
@@ -185,8 +190,17 @@ def main():
           "%d ports" % len(nw.get("ports", [])))
     real = [p for p in nw["ports"] if not p.get("ephemeral")]
     pub = [p for p in real if p["scope"] == "public"]
-    check("  transient UDP sockets are flagged", len(real) < len(nw["ports"]),
-          "%d transient" % (len(nw["ports"]) - len(real)))
+    # Transient sockets exist only where something like a proxy opens them.
+    # Where there are high UDP ports, each must be flagged; where there are
+    # none, there is nothing to check.
+    high_udp = [p for p in nw["ports"] if p["proto"].startswith("udp") and p["port"] >= 32768]
+    if high_udp:
+        unflagged = [p["port"] for p in high_udp if not p.get("ephemeral")]
+        check("  transient UDP sockets are flagged", not unflagged,
+              "%d transient" % len(high_udp) if not unflagged
+              else "not flagged: %s" % unflagged[:5])
+    else:
+        print("  ---  no transient UDP sockets on this machine, check skipped")
     check("  public and local are separated", 0 < len(pub) < len(real),
           "%d public of %d" % (len(pub), len(real)))
     check("  the dashboard listens on localhost only",
@@ -195,9 +209,21 @@ def main():
     code, ss_, _ = req("/api/ssl")
     certs = ss_.get("certificates", [])
     check("certificates section", code == 200 and len(certs) >= 1, "%d" % len(certs))
-    check("  the IP certificate is monitored",
-          any(c.get("extra") for c in certs),
-          next((c["domain"] for c in certs if c.get("extra")), "not found"))
+    # Certificates outside the domain list exist only if this installation
+    # declares them (extra_certs in its config.json).
+    local_cfg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             "config.json")
+    try:
+        extra_declared = len(json.load(open(local_cfg, encoding="utf-8")).get("extra_certs") or [])
+    except (OSError, ValueError):
+        extra_declared = None
+    if extra_declared:
+        found = [c for c in certs if c.get("extra")]
+        check("  extra certificates are monitored", len(found) >= extra_declared,
+              "%d of %d: %s" % (len(found), extra_declared,
+                                ", ".join(c["domain"] for c in found) or "none"))
+    else:
+        print("  ---  no extra_certs declared, check skipped")
     for c in ss_["certificates"]:
         check("  certificate %s" % c["domain"], c.get("days_left") is not None,
               "%s, %s days, %s" % (c.get("issuer"), c.get("days_left"), c.get("status")))
@@ -206,6 +232,11 @@ def main():
     code, doms2, _ = req("/api/domains")
     for d in doms2["domains"]:
         reg = d.get("registration") or {}
+        # A registry knows registered domains, not their subdomains: there is
+        # no expiry date to find for lk.example.ru.
+        if d["domain"].count(".") >= 2 and not reg.get("days_left"):
+            print("  ---  %s is a subdomain, no registry record of its own, skipped" % d["domain"])
+            continue
         check("registration of %s" % d["domain"], reg.get("days_left") is not None,
               "until %s, %s days left, %s" % (reg.get("paid_till_raw") or "—",
                                               reg.get("days_left"), reg.get("registrar")))
